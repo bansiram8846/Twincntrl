@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">TwinControl</string>
+    <string name="accessibility_service_description">TwinControl Accessibility Service enables authorized remote controllers to simulate touch gestures and navigation on this device.</string>
+</resources>
