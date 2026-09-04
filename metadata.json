@@ -2,5 +2,7 @@
   "name": "TwinControl",
   "description": "Secure local Android-to-Android remote screen mirroring and device interaction.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
