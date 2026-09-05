@@ -19,19 +19,27 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HighQuality
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,18 +49,31 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.network.LocalDeviceManager
 
 @Composable
 fun SettingsScreen(
   modifier: Modifier = Modifier,
 ) {
+  val context = LocalContext.current
   var hardwareAcceleration by remember { mutableStateOf(true) }
   var lowLatencyAudio by remember { mutableStateOf(true) }
   var autoReconnect by remember { mutableStateOf(true) }
   var mDnsDiscovery by remember { mutableStateOf(true) }
+
+  var customNickname by remember { mutableStateOf(LocalDeviceManager.getCustomDeviceName(context) ?: "") }
+  var showRenameDialog by remember { mutableStateOf(false) }
+  var renameInput by remember { mutableStateOf("") }
+
+  val detectedModel = remember { LocalDeviceManager.getDeviceModel() }
+  val detectedManufacturer = remember { LocalDeviceManager.getDeviceManufacturer() }
+  val osVersion = remember { LocalDeviceManager.getOsVersion() }
+  val hardware = remember { LocalDeviceManager.getDeviceHardware() }
+  val isEmulator = remember { LocalDeviceManager.isRunningInEmulator() }
 
   Column(
     modifier = modifier
@@ -181,6 +202,129 @@ fun SettingsScreen(
             onCheckedChange = { autoReconnect = it },
             colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary),
           )
+        },
+      )
+    }
+
+    // Hardware & Device Identity Group (Auto-detected from Android OS)
+    SettingsGroup(title = "DEVICE & HARDWARE IDENTITY") {
+      SettingsRow(
+        title = "Detected Phone Model",
+        subtitle = "Dynamically read from android.os.Build.MODEL",
+        icon = Icons.Default.PhoneAndroid,
+        trailing = {
+          Text(
+            text = detectedModel,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.primary,
+          )
+        },
+      )
+      SettingsRow(
+        title = "Manufacturer",
+        subtitle = "android.os.Build.MANUFACTURER",
+        icon = Icons.Default.Memory,
+        trailing = {
+          Text(
+            text = detectedManufacturer,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
+          )
+        },
+      )
+      SettingsRow(
+        title = "Android OS & API",
+        subtitle = "Operating System & Kernel",
+        icon = Icons.Default.Info,
+        trailing = {
+          Text(
+            text = osVersion,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+        },
+      )
+      SettingsRow(
+        title = "Device Nickname",
+        subtitle = if (customNickname.isNotBlank()) "Custom: $customNickname" else "Using system model",
+        icon = Icons.Default.Edit,
+        trailing = {
+          TextButton(
+            onClick = {
+              renameInput = customNickname
+              showRenameDialog = true
+            }
+          ) {
+            Text(if (customNickname.isNotBlank()) "Edit" else "Set")
+          }
+        },
+      )
+
+      if (isEmulator) {
+        Surface(
+          color = MaterialTheme.colorScheme.surfaceContainerHigh,
+          shape = RoundedCornerShape(12.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp),
+        ) {
+          Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            Icon(
+              imageVector = Icons.Default.Info,
+              contentDescription = null,
+              tint = MaterialTheme.colorScheme.primary,
+              modifier = Modifier.size(20.dp),
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+              text = "Running on Android Virtual Device / Cloud Emulator. When installed on your physical smartphone (Samsung, Pixel, Xiaomi, OnePlus, etc.), your phone's real model auto-detects dynamically without any hardcoding.",
+              style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
+        }
+      }
+    }
+
+    if (showRenameDialog) {
+      AlertDialog(
+        onDismissRequest = { showRenameDialog = false },
+        title = { Text("Set Device Nickname") },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+              text = "Give this device a custom friendly name across TwinControl sessions (leave empty to reset to detected system model '$detectedModel'):",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+              value = renameInput,
+              onValueChange = { renameInput = it },
+              label = { Text("Device Nickname") },
+              placeholder = { Text(detectedModel) },
+              singleLine = true,
+              modifier = Modifier.fillMaxWidth(),
+            )
+          }
+        },
+        confirmButton = {
+          Button(
+            onClick = {
+              LocalDeviceManager.setCustomDeviceName(context, renameInput.trim())
+              customNickname = renameInput.trim()
+              showRenameDialog = false
+            }
+          ) {
+            Text("Save")
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showRenameDialog = false }) {
+            Text("Cancel")
+          }
         },
       )
     }

@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PowerSettingsNew
@@ -45,17 +47,23 @@ import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -85,6 +93,11 @@ fun ControllerHomeScreen(
   val activeDevice by viewModel.activeDevice.collectAsState()
   val telemetry by viewModel.telemetry.collectAsState()
   val recentDevices by viewModel.recentDevices.collectAsState()
+  val effectiveDeviceName by viewModel.effectiveDeviceName.collectAsState()
+
+  var showDeviceInfoDialog by remember { mutableStateOf(false) }
+  var showRenameDialog by remember { mutableStateOf(false) }
+  var renameInput by remember { mutableStateOf("") }
 
   val infiniteTransition = rememberInfiniteTransition(label = "pulse")
   val pulseAlpha by infiniteTransition.animateFloat(
@@ -104,7 +117,7 @@ fun ControllerHomeScreen(
       .padding(horizontal = 16.dp, vertical = 12.dp),
     verticalArrangement = Arrangement.spacedBy(16.dp),
   ) {
-    // 1. Controller Host Status Banner
+    // 1. Controller Host Status Banner (Clickable to inspect hardware & model info)
     Surface(
       color = MaterialTheme.colorScheme.surface,
       shape = RoundedCornerShape(9999.dp),
@@ -112,14 +125,20 @@ fun ControllerHomeScreen(
         width = 1.dp,
         color = MaterialTheme.colorScheme.outlineVariant,
       ),
-      modifier = Modifier.fillMaxWidth(),
+      modifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(9999.dp))
+        .clickable { showDeviceInfoDialog = true },
     ) {
       Row(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
       ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier.weight(1f, fill = false),
+        ) {
           Icon(
             imageVector = Icons.Default.PhoneAndroid,
             contentDescription = null,
@@ -128,20 +147,29 @@ fun ControllerHomeScreen(
           )
           Spacer(modifier = Modifier.width(8.dp))
           Text(
-            text = "Pixel 9 Pro",
+            text = effectiveDeviceName,
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
           )
-          Text(
-            text = " · ",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
-          Text(
-            text = "Controller Active",
-            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.primary,
-          )
+          Spacer(modifier = Modifier.width(6.dp))
+          // Auto-detected indicator chip
+          Row(
+            modifier = Modifier
+              .clip(RoundedCornerShape(9999.dp))
+              .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f))
+              .padding(horizontal = 6.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            Text(
+              text = "Auto-detected",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary,
+              ),
+            )
+          }
         }
 
         Row(
@@ -153,14 +181,14 @@ fun ControllerHomeScreen(
           verticalAlignment = Alignment.CenterVertically,
         ) {
           Icon(
-            imageVector = Icons.Default.Security,
+            imageVector = Icons.Default.Wifi,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(13.dp),
           )
           Spacer(modifier = Modifier.width(4.dp))
           Text(
-            text = "Host #01",
+            text = viewModel.wifiSsid,
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
@@ -193,206 +221,284 @@ fun ControllerHomeScreen(
               modifier = Modifier
                 .size(48.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                .background(
+                  if (activeDevice != null) MaterialTheme.colorScheme.surfaceContainerHighest
+                  else MaterialTheme.colorScheme.surfaceContainerLow
+                ),
               contentAlignment = Alignment.Center,
             ) {
               Icon(
-                imageVector = Icons.Default.Smartphone,
+                imageVector = if (activeDevice != null) Icons.Default.Smartphone else Icons.Default.PhoneAndroid,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = if (activeDevice != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(26.dp),
               )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column {
-              Row(verticalAlignment = Alignment.CenterVertically) {
+              if (activeDevice != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  Text(
+                    text = activeDevice!!.name,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                  )
+                  Spacer(modifier = Modifier.width(6.dp))
+                  Text(
+                    text = activeDevice!!.locationTag,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                      .clip(RoundedCornerShape(4.dp))
+                      .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                      .padding(horizontal = 6.dp, vertical = 2.dp),
+                  )
+                }
                 Text(
-                  text = activeDevice?.name ?: "Pixel 8 Pro",
+                  text = "${activeDevice!!.model} · ${activeDevice!!.ipAddress}:${activeDevice!!.port}",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+              } else {
+                Text(
+                  text = "No Target Connected",
                   style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                   color = MaterialTheme.colorScheme.onSurface,
                 )
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                  text = activeDevice?.locationTag ?: "Living Room",
-                  style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                  text = "Pair with an Android phone or tablet on your Wi-Fi",
+                  style = MaterialTheme.typography.bodySmall,
                   color = MaterialTheme.colorScheme.onSurfaceVariant,
-                  modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
               }
-              Text(
-                text = "Host ID: ${activeDevice?.id ?: "tc-client-9842"} · ${activeDevice?.osVersion ?: "Android 14"}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-              )
             }
           }
 
           // Live Connection Status Badge
           val isConnected = connectionState == ConnectionState.CONNECTED
-          Row(
-            modifier = Modifier
-              .clip(RoundedCornerShape(9999.dp))
-              .background(if (isConnected) StreamConnectedBg else StreamErrorBg)
-              .border(
-                1.dp,
-                if (isConnected) StreamConnectedGreen.copy(alpha = 0.4f) else StreamErrorRed.copy(alpha = 0.4f),
-                RoundedCornerShape(9999.dp),
-              )
-              .padding(horizontal = 10.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-          ) {
-            Box(
+          if (activeDevice != null) {
+            Row(
               modifier = Modifier
-                .size(8.dp)
-                .alpha(if (isConnected) pulseAlpha else 1f)
-                .clip(CircleShape)
-                .background(if (isConnected) StreamConnectedGreen else StreamErrorRed)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-              text = if (isConnected) "Connected (Local TLS)" else "Disconnected",
-              style = MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.SemiBold,
-                color = if (isConnected) StreamConnectedGreen else StreamErrorRed,
-              ),
-            )
+                .clip(RoundedCornerShape(9999.dp))
+                .background(if (isConnected) StreamConnectedBg else StreamErrorBg)
+                .border(
+                  1.dp,
+                  if (isConnected) StreamConnectedGreen.copy(alpha = 0.4f) else StreamErrorRed.copy(alpha = 0.4f),
+                  RoundedCornerShape(9999.dp),
+                )
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              Box(
+                modifier = Modifier
+                  .size(8.dp)
+                  .alpha(if (isConnected) pulseAlpha else 1f)
+                  .clip(CircleShape)
+                  .background(if (isConnected) StreamConnectedGreen else StreamErrorRed)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = if (isConnected) "Connected (TLS)" else "Disconnected",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.SemiBold,
+                  color = if (isConnected) StreamConnectedGreen else StreamErrorRed,
+                ),
+              )
+            }
+          } else {
+            Row(
+              modifier = Modifier
+                .clip(RoundedCornerShape(9999.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+                .border(
+                  1.dp,
+                  MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                  RoundedCornerShape(9999.dp),
+                )
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              Box(
+                modifier = Modifier
+                  .size(8.dp)
+                  .clip(CircleShape)
+                  .background(MaterialTheme.colorScheme.outline)
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = "Standby",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontWeight = FontWeight.SemiBold,
+                  color = MaterialTheme.colorScheme.outline,
+                ),
+              )
+            }
           }
         }
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Bento Telemetry Grid (2 rows / 5 items)
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-          TelemetryTile(
-            title = "BATTERY",
-            value = "${activeDevice?.batteryPercent ?: 78}%",
-            subtext = "Charging",
-            icon = Icons.Default.Bolt,
-            iconTint = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.weight(1f),
-          )
-          TelemetryTile(
-            title = "LATENCY",
-            value = "${telemetry.latencyMs}",
-            unit = "ms",
-            badge = "Low",
-            icon = Icons.Default.Speed,
-            iconTint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.weight(1f),
-          )
-        }
+        // Bento Telemetry Grid
+        if (activeDevice != null) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            TelemetryTile(
+              title = "BATTERY",
+              value = "${activeDevice!!.batteryPercent}%",
+              subtext = "Charging",
+              icon = Icons.Default.Bolt,
+              iconTint = MaterialTheme.colorScheme.secondary,
+              modifier = Modifier.weight(1f),
+            )
+            TelemetryTile(
+              title = "LATENCY",
+              value = "${telemetry.latencyMs}",
+              unit = "ms",
+              badge = if (telemetry.latencyMs < 30) "Low" else "Normal",
+              icon = Icons.Default.Speed,
+              iconTint = MaterialTheme.colorScheme.primary,
+              modifier = Modifier.weight(1f),
+            )
+          }
 
-        Spacer(modifier = Modifier.height(8.dp))
+          Spacer(modifier = Modifier.height(8.dp))
 
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-          TelemetryTile(
-            title = "WI-FI",
-            value = activeDevice?.wifiSsid ?: "5 GHz",
-            subtext = "Signal ${activeDevice?.signalDbm ?: -42} dBm",
-            icon = Icons.Default.Wifi,
-            iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-          )
-          TelemetryTile(
-            title = "STREAM",
-            value = activeDevice?.streamResolution ?: "1080×2400",
-            subtext = "@ ${telemetry.fps} FPS ${telemetry.codec}",
-            icon = Icons.Default.Videocam,
-            iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-          )
-          TelemetryTile(
-            title = "MIRRORING",
-            value = if (telemetry.isMirroringActive) "Active" else "Idle",
-            icon = Icons.Default.ScreenShare,
-            iconTint = MaterialTheme.colorScheme.secondary,
-            showPip = true,
-            modifier = Modifier.weight(1f),
-          )
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            TelemetryTile(
+              title = "WI-FI",
+              value = activeDevice!!.wifiSsid,
+              subtext = "Signal ${activeDevice!!.signalDbm} dBm",
+              icon = Icons.Default.Wifi,
+              iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+              modifier = Modifier.weight(1f),
+            )
+            TelemetryTile(
+              title = "STREAM",
+              value = "${telemetry.resolutionWidth}×${telemetry.resolutionHeight}",
+              subtext = "@ ${telemetry.fps} FPS ${telemetry.codec}",
+              icon = Icons.Default.Videocam,
+              iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
+              modifier = Modifier.weight(1f),
+            )
+            TelemetryTile(
+              title = "MIRRORING",
+              value = if (telemetry.isMirroringActive) "Active" else "Idle",
+              icon = Icons.Default.ScreenShare,
+              iconTint = MaterialTheme.colorScheme.secondary,
+              showPip = true,
+              modifier = Modifier.weight(1f),
+            )
+          }
+        } else {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            TelemetryTile(
+              title = "CONTROLLER IP",
+              value = viewModel.localIpAddress,
+              subtext = "Port 8989",
+              icon = Icons.Default.PhoneAndroid,
+              iconTint = MaterialTheme.colorScheme.primary,
+              modifier = Modifier.weight(1f),
+            )
+            TelemetryTile(
+              title = "NETWORK",
+              value = viewModel.wifiSsid,
+              subtext = "Local Subnet",
+              icon = Icons.Default.Wifi,
+              iconTint = MaterialTheme.colorScheme.secondary,
+              modifier = Modifier.weight(1f),
+            )
+          }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         // Action Buttons Row
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        if (activeDevice != null) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            Button(
+              onClick = onNavigateToRemote,
+              shape = RoundedCornerShape(9999.dp),
+              colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+              ),
+              modifier = Modifier
+                .testTag("remote_screen_button")
+                .weight(1f)
+                .height(44.dp),
+            ) {
+              Icon(
+                imageVector = Icons.Default.SettingsRemote,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = "Remote Screen",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+              )
+            }
+
+            OutlinedButton(
+              onClick = { viewModel.toggleConnection() },
+              shape = RoundedCornerShape(9999.dp),
+              colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.error,
+              ),
+              border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
+              ),
+              modifier = Modifier
+                .testTag("disconnect_button")
+                .height(44.dp),
+            ) {
+              Icon(
+                imageVector = if (connectionState == ConnectionState.CONNECTED) Icons.Default.LinkOff else Icons.Default.PowerSettingsNew,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = if (connectionState == ConnectionState.CONNECTED) "Disconnect" else "Connect",
+                style = MaterialTheme.typography.labelLarge,
+              )
+            }
+          }
+        } else {
           Button(
-            onClick = onNavigateToRemote,
+            onClick = onNavigateToPair,
             shape = RoundedCornerShape(9999.dp),
             colors = ButtonDefaults.buttonColors(
               containerColor = MaterialTheme.colorScheme.primary,
               contentColor = MaterialTheme.colorScheme.onPrimary,
             ),
             modifier = Modifier
-              .testTag("remote_screen_button")
-              .weight(1f)
+              .testTag("pair_target_button")
+              .fillMaxWidth()
               .height(44.dp),
           ) {
             Icon(
-              imageVector = Icons.Default.SettingsRemote,
+              imageVector = Icons.Default.QrCodeScanner,
               contentDescription = null,
               modifier = Modifier.size(18.dp),
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = "Remote Screen",
+              text = "Pair New Target Device",
               style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-            )
-          }
-
-          OutlinedButton(
-            onClick = { viewModel.toggleConnection() },
-            shape = RoundedCornerShape(9999.dp),
-            colors = ButtonDefaults.outlinedButtonColors(
-              contentColor = MaterialTheme.colorScheme.error,
-            ),
-            border = androidx.compose.foundation.BorderStroke(
-              1.dp,
-              MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
-            ),
-            modifier = Modifier
-              .testTag("disconnect_button")
-              .height(44.dp),
-          ) {
-            Icon(
-              imageVector = if (connectionState == ConnectionState.CONNECTED) Icons.Default.LinkOff else Icons.Default.PowerSettingsNew,
-              contentDescription = null,
-              modifier = Modifier.size(18.dp),
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-              text = if (connectionState == ConnectionState.CONNECTED) "Disconnect" else "Connect",
-              style = MaterialTheme.typography.labelLarge,
-            )
-          }
-
-          IconButton(
-            onClick = { /* Tune stream dialog */ },
-            modifier = Modifier
-              .size(44.dp)
-              .border(
-                1.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                CircleShape,
-              ),
-          ) {
-            Icon(
-              imageVector = Icons.Default.Tune,
-              contentDescription = "Stream Settings",
-              tint = MaterialTheme.colorScheme.onSurfaceVariant,
-              modifier = Modifier.size(20.dp),
             )
           }
         }
@@ -561,6 +667,158 @@ fun ControllerHomeScreen(
     }
 
     Spacer(modifier = Modifier.height(60.dp))
+  }
+
+  // Device Hardware & Dynamic Detection Dialog
+  if (showDeviceInfoDialog) {
+    AlertDialog(
+      onDismissRequest = { showDeviceInfoDialog = false },
+      title = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Icon(
+            imageVector = Icons.Default.PhoneAndroid,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp),
+          )
+          Spacer(modifier = Modifier.width(8.dp))
+          Text("Device Hardware Info")
+        }
+      },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          Text(
+            text = "Auto-detected dynamically from Android OS system properties (android.os.Build):",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+
+          Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            Column(
+              modifier = Modifier.padding(12.dp),
+              verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+              ) {
+                Text("Model (Build.MODEL):", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(viewModel.thisDeviceModel, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+              }
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+              ) {
+                Text("Manufacturer:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(viewModel.thisDeviceManufacturer, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold))
+              }
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+              ) {
+                Text("Android OS:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(viewModel.thisDeviceOs, style = MaterialTheme.typography.labelSmall)
+              }
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+              ) {
+                Text("Local IP Address:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(viewModel.localIpAddress, style = MaterialTheme.typography.labelSmall)
+              }
+            }
+          }
+
+          if (viewModel.isEmulator) {
+            Surface(
+              color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+              shape = RoundedCornerShape(10.dp),
+              modifier = Modifier.fillMaxWidth(),
+            ) {
+              Row(
+                modifier = Modifier.padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Info,
+                  contentDescription = null,
+                  tint = MaterialTheme.colorScheme.primary,
+                  modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                  text = "Why Pixel 8 Pro? You are previewing in an Android Cloud Emulator (Pixel 8 Pro AVD image). When running on your physical phone (Samsung, OnePlus, etc.), your phone's real model is dynamically detected.",
+                  style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                  color = MaterialTheme.colorScheme.onSurface,
+                )
+              }
+            }
+          }
+
+          OutlinedButton(
+            onClick = {
+              renameInput = effectiveDeviceName
+              showRenameDialog = true
+            },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(10.dp),
+          ) {
+            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Set Custom Device Nickname")
+          }
+        }
+      },
+      confirmButton = {
+        Button(onClick = { showDeviceInfoDialog = false }) {
+          Text("OK")
+        }
+      },
+    )
+  }
+
+  // Rename Dialog
+  if (showRenameDialog) {
+    AlertDialog(
+      onDismissRequest = { showRenameDialog = false },
+      title = { Text("Set Device Nickname") },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Text(
+            text = "Enter a custom name for this phone (leave empty to revert to system model '${viewModel.thisDeviceName}'):",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          OutlinedTextField(
+            value = renameInput,
+            onValueChange = { renameInput = it },
+            label = { Text("Nickname") },
+            placeholder = { Text(viewModel.thisDeviceName) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+          )
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            viewModel.updateCustomDeviceName(renameInput.trim())
+            showRenameDialog = false
+          }
+        ) {
+          Text("Save")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showRenameDialog = false }) {
+          Text("Cancel")
+        }
+      },
+    )
   }
 }
 

@@ -18,6 +18,9 @@ data class DeviceInfo(
   val streamResolution: String = "1080×2400",
   val streamFps: Int = 60,
   val streamCodec: String = "H.265",
+  val silentConnectCapable: Boolean = true,
+  val pairingPin: String = "",
+  val connectionMedium: String = "Wi-Fi",
 )
 
 data class SessionTelemetry(

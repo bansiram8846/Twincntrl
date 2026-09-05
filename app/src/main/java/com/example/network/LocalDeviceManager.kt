@@ -15,19 +15,77 @@ import java.util.Collections
 
 object LocalDeviceManager {
 
+  private const val PREFS_NAME = "twincontrol_device_prefs"
+  private const val KEY_CUSTOM_DEVICE_NAME = "custom_device_name"
+
   fun getDeviceName(): String {
-    val manufacturer = Build.MANUFACTURER.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-    val model = Build.MODEL
-    return if (model.startsWith(manufacturer, ignoreCase = true)) {
+    val manufacturer = Build.MANUFACTURER?.replaceFirstChar {
+      if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString()
+    }?.trim() ?: ""
+    val model = Build.MODEL?.trim() ?: ""
+    if (model.isBlank()) {
+      return if (manufacturer.isNotBlank()) manufacturer else "Android Device"
+    }
+    return if (manufacturer.isNotBlank() && model.startsWith(manufacturer, ignoreCase = true)) {
       model
-    } else {
+    } else if (manufacturer.isNotBlank()) {
       "$manufacturer $model"
+    } else {
+      model
     }
   }
 
-  fun getDeviceModel(): String = Build.MODEL
+  fun getEffectiveDeviceName(context: Context): String {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val custom = prefs.getString(KEY_CUSTOM_DEVICE_NAME, null)?.trim()
+    if (!custom.isNullOrEmpty()) {
+      return custom
+    }
+    return getDeviceName()
+  }
+
+  fun setCustomDeviceName(context: Context, name: String) {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    if (name.isBlank()) {
+      prefs.edit().remove(KEY_CUSTOM_DEVICE_NAME).apply()
+    } else {
+      prefs.edit().putString(KEY_CUSTOM_DEVICE_NAME, name.trim()).apply()
+    }
+  }
+
+  fun getCustomDeviceName(context: Context): String? {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    return prefs.getString(KEY_CUSTOM_DEVICE_NAME, null)?.takeIf { it.isNotBlank() }
+  }
+
+  fun getDeviceModel(): String = Build.MODEL ?: "Android Device"
+
+  fun getDeviceManufacturer(): String = Build.MANUFACTURER ?: "Unknown"
+
+  fun getDeviceBrand(): String = Build.BRAND ?: "Unknown"
+
+  fun getDeviceHardware(): String = "${Build.BOARD} / ${Build.HARDWARE}"
 
   fun getOsVersion(): String = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
+
+  fun isRunningInEmulator(): Boolean {
+    val fingerprint = Build.FINGERPRINT ?: ""
+    val model = Build.MODEL ?: ""
+    val brand = Build.BRAND ?: ""
+    val device = Build.DEVICE ?: ""
+    val product = Build.PRODUCT ?: ""
+    val hardware = Build.HARDWARE ?: ""
+    return fingerprint.startsWith("generic") ||
+      fingerprint.startsWith("unknown") ||
+      model.contains("google_sdk") ||
+      model.contains("Emulator") ||
+      model.contains("Android SDK built for") ||
+      hardware.contains("goldfish") ||
+      hardware.contains("ranchu") ||
+      product.contains("sdk") ||
+      product.contains("google_sdk") ||
+      brand.startsWith("generic") && device.startsWith("generic")
+  }
 
   fun getLocalIpAddress(context: Context): String {
     try {

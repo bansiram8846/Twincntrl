@@ -1,20 +1,35 @@
 package com.example.ui.controller
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import android.graphics.Bitmap
+import android.util.Log
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.CommandType
 import com.example.data.model.ConnectionState
 import com.example.data.model.DeviceInfo
 import com.example.data.model.GestureMode
 import com.example.data.model.PairingState
-import com.example.data.model.RemoteCommand
 import com.example.data.model.SessionTelemetry
+import com.example.network.LocalDeviceManager
+import com.example.network.client.ControllerClient
+import com.example.network.client.StreamReceiver
+import com.example.network.discovery.DiscoveryManager
+import com.example.network.protocol.TwinProtocol
+import com.example.util.QrCodeUtil
+import com.example.util.QrPairingData
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 data class ActivityLogEntry(
@@ -25,158 +40,167 @@ data class ActivityLogEntry(
   val isSuccess: Boolean = true,
 )
 
-class ControllerViewModel : ViewModel() {
+class ControllerViewModel(application: Application) : AndroidViewModel(application) {
 
-  private val _connectionState = MutableStateFlow(ConnectionState.CONNECTED)
+  private val context = application.applicationContext
+  private val prefs = context.getSharedPreferences("twincontrol_paired_devices", Context.MODE_PRIVATE)
+
+  // Hardware & Network identity of this phone (Controller)
+  val thisDeviceName: String = LocalDeviceManager.getDeviceName()
+  val thisDeviceModel: String = LocalDeviceManager.getDeviceModel()
+  val thisDeviceManufacturer: String = LocalDeviceManager.getDeviceManufacturer()
+  val thisDeviceBrand: String = LocalDeviceManager.getDeviceBrand()
+  val thisDeviceHardware: String = LocalDeviceManager.getDeviceHardware()
+  val thisDeviceOs: String = LocalDeviceManager.getOsVersion()
+  val isEmulator: Boolean = LocalDeviceManager.isRunningInEmulator()
+  val localIpAddress: String = LocalDeviceManager.getLocalIpAddress(context)
+  val wifiSsid: String = LocalDeviceManager.getWifiSsid(context)
+
+  private val _effectiveDeviceName = MutableStateFlow(LocalDeviceManager.getEffectiveDeviceName(context))
+  val effectiveDeviceName: StateFlow<String> = _effectiveDeviceName.asStateFlow()
+
+  fun updateCustomDeviceName(name: String) {
+    LocalDeviceManager.setCustomDeviceName(context, name)
+    _effectiveDeviceName.value = LocalDeviceManager.getEffectiveDeviceName(context)
+  }
+
+  private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
   val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
   private val _pairingState = MutableStateFlow(PairingState.IDLE)
   val pairingState: StateFlow<PairingState> = _pairingState.asStateFlow()
 
-  private val _activeDevice = MutableStateFlow<DeviceInfo?>(
-    DeviceInfo(
-      id = "tc-client-9842",
-      name = "Pixel 8 Pro",
-      model = "Pixel 8 Pro",
-      ipAddress = "192.168.1.135",
-      isAuthorized = true,
-      isConnected = true,
-      locationTag = "Living Room",
-      lastSeen = "Active Now",
-      batteryPercent = 78,
-      isCharging = true,
-      wifiSsid = "5 GHz",
-      signalDbm = -42,
-      osVersion = "Android 14",
-      streamResolution = "1080×2400",
-      streamFps = 60,
-      streamCodec = "H.265",
-    )
-  )
+  private val _activeDevice = MutableStateFlow<DeviceInfo?>(null)
   val activeDevice: StateFlow<DeviceInfo?> = _activeDevice.asStateFlow()
 
   private val _telemetry = MutableStateFlow(
     SessionTelemetry(
-      latencyMs = 32,
-      fps = 60,
+      latencyMs = 0,
+      fps = 0,
       resolutionWidth = 1080,
       resolutionHeight = 2400,
-      bitrateMbps = 6.8f,
-      codec = "H.265",
+      bitrateMbps = 0f,
+      codec = "JPEG-Stream",
       protocol = "TLS 1.3 Direct Socket",
       droppedFrames = 0,
-      inputIngestionLatencyMs = 4.2f,
-      isMirroringActive = true,
+      inputIngestionLatencyMs = 0f,
+      isMirroringActive = false,
     )
   )
   val telemetry: StateFlow<SessionTelemetry> = _telemetry.asStateFlow()
 
+  // Real remote screen live bitmap
+  private val _remoteScreenBitmap = MutableStateFlow<Bitmap?>(null)
+  val remoteScreenBitmap: StateFlow<Bitmap?> = _remoteScreenBitmap.asStateFlow()
+
   private val _gestureMode = MutableStateFlow(GestureMode.TAP)
   val gestureMode: StateFlow<GestureMode> = _gestureMode.asStateFlow()
 
-  private val _lastTouchCoordinate = MutableStateFlow<Pair<Float, Float>?>(Pair(684f, 1190f))
+  private val _lastTouchCoordinate = MutableStateFlow<Pair<Float, Float>?>(null)
   val lastTouchCoordinate: StateFlow<Pair<Float, Float>?> = _lastTouchCoordinate.asStateFlow()
 
-  // Numeric 6-digit PIN entry state
-  private val _pinDigits = MutableStateFlow(listOf("4", "8", "2", "", "", ""))
+  // Numeric 6-digit PIN entry state (clean empty start)
+  private val _pinDigits = MutableStateFlow(listOf("", "", "", "", "", ""))
   val pinDigits: StateFlow<List<String>> = _pinDigits.asStateFlow()
 
-  private val _nearbyDevices = MutableStateFlow(
-    listOf(
-      DeviceInfo(
-        id = "tc-client-7711",
-        name = "Pixel 7a",
-        model = "Pixel 7a",
-        ipAddress = "192.168.1.144",
-        isAuthorized = false,
-        isConnected = false,
-        locationTag = "Nearby Wi-Fi",
-        lastSeen = "Just now",
-        batteryPercent = 92,
-        wifiSsid = "5 GHz",
-        signalDbm = -42,
-      ),
-      DeviceInfo(
-        id = "tc-client-4402",
-        name = "Telemetry Workstation X",
-        model = "Workstation",
-        ipAddress = "192.168.1.202",
-        isAuthorized = false,
-        isConnected = false,
-        locationTag = "Local Subnet",
-        lastSeen = "Requires Auth Token",
-        batteryPercent = 100,
-        wifiSsid = "Ethernet / 5 GHz",
-        signalDbm = -35,
-      ),
-    )
-  )
-  val nearbyDevices: StateFlow<List<DeviceInfo>> = _nearbyDevices.asStateFlow()
+  private val discoveryManager = DiscoveryManager(context)
+  val nearbyDevices: StateFlow<List<DeviceInfo>> = discoveryManager.discoveredDevices
 
-  private val _recentDevices = MutableStateFlow(
-    listOf(
-      DeviceInfo(
-        id = "tc-client-9842",
-        name = "Pixel 8 Pro",
-        model = "Pixel 8 Pro",
-        ipAddress = "192.168.1.135",
-        isAuthorized = true,
-        isConnected = true,
-        locationTag = "Living Room",
-        lastSeen = "Active now",
-        batteryPercent = 78,
-      ),
-      DeviceInfo(
-        id = "tc-client-5521",
-        name = "Galaxy S24 Ultra",
-        model = "Galaxy S24 Ultra",
-        ipAddress = "192.168.1.109",
-        isAuthorized = true,
-        isConnected = false,
-        locationTag = "Office",
-        lastSeen = "Last seen 2h ago",
-        batteryPercent = 64,
-      ),
-      DeviceInfo(
-        id = "tc-client-3390",
-        name = "Pixel Tablet",
-        model = "Pixel Tablet",
-        ipAddress = "192.168.1.188",
-        isAuthorized = false,
-        isConnected = false,
-        locationTag = "Desk",
-        lastSeen = "Same Wi-Fi detected",
-        batteryPercent = 88,
-      ),
-    )
-  )
+  private val _recentDevices = MutableStateFlow<List<DeviceInfo>>(emptyList())
   val recentDevices: StateFlow<List<DeviceInfo>> = _recentDevices.asStateFlow()
 
-  private val _activityLogs = MutableStateFlow(
-    listOf(
-      ActivityLogEntry(timestamp = "09:40:12", type = "TLS Handshake", detail = "Direct Socket encrypted with TLS 1.3 ECDHE-RSA"),
-      ActivityLogEntry(timestamp = "09:40:15", type = "MediaProjection", detail = "Target screen capture stream initiated at 1080x2400 @ 60 FPS"),
-      ActivityLogEntry(timestamp = "09:40:18", type = "Accessibility Tap", detail = "Dispatched single tap at (684, 1190) on Target"),
-      ActivityLogEntry(timestamp = "09:40:35", type = "Navigation Command", detail = "Dispatched Remote Home intent to Target"),
-      ActivityLogEntry(timestamp = "09:41:02", type = "Heartbeat", detail = "Round-trip ping-pong latency 28ms"),
-    )
-  )
+  private val _activityLogs = MutableStateFlow<List<ActivityLogEntry>>(emptyList())
   val activityLogs: StateFlow<List<ActivityLogEntry>> = _activityLogs.asStateFlow()
 
-  private var telemetryTicker: Job? = null
+  // Network clients
+  private val controllerClient = ControllerClient(
+    onPairResponse = { success, errorMsg ->
+      viewModelScope.launch {
+        if (success) {
+          _pairingState.value = PairingState.AUTHORIZED
+          _connectionState.value = ConnectionState.CONNECTED
+          val dev = _activeDevice.value?.copy(isConnected = true, isAuthorized = true)
+          _activeDevice.value = dev
+          if (dev != null) {
+            savePairedDevice(dev)
+            addLog("Pairing Succeeded", "Authenticated securely with ${dev.name}")
+            // Start video stream client
+            streamReceiver.start(dev.ipAddress, TwinProtocol.STREAM_PORT)
+          }
+        } else {
+          _pairingState.value = PairingState.REJECTED
+          _connectionState.value = ConnectionState.FAILED
+          addLog("Auth Rejected", errorMsg ?: "Invalid passcode")
+        }
+      }
+    },
+    onPongReceived = { rttMs ->
+      _telemetry.value = _telemetry.value.copy(
+        latencyMs = rttMs,
+        inputIngestionLatencyMs = (rttMs / 2f).coerceAtLeast(1.5f),
+      )
+    },
+    onDisconnected = { reason ->
+      viewModelScope.launch {
+        if (_connectionState.value == ConnectionState.CONNECTED) {
+          _connectionState.value = ConnectionState.DISCONNECTED
+          _activeDevice.value = _activeDevice.value?.copy(isConnected = false)
+          _remoteScreenBitmap.value = null
+          _telemetry.value = _telemetry.value.copy(isMirroringActive = false, fps = 0)
+          addLog("Session Disconnected", reason)
+        }
+      }
+    }
+  )
+
+  private val streamReceiver = StreamReceiver(
+    onFrameReceived = { bitmap, update ->
+      _remoteScreenBitmap.value = bitmap
+      _telemetry.value = _telemetry.value.copy(
+        fps = update.fps,
+        latencyMs = if (update.latencyMs > 0) update.latencyMs else _telemetry.value.latencyMs,
+        bitrateMbps = update.bitrateMbps,
+        resolutionWidth = update.width,
+        resolutionHeight = update.height,
+        droppedFrames = update.droppedFrames,
+        isMirroringActive = true,
+      )
+    },
+    onStreamDisconnected = {
+      _remoteScreenBitmap.value = null
+      _telemetry.value = _telemetry.value.copy(isMirroringActive = false, fps = 0)
+    }
+  )
+
+  private var pingJob: Job? = null
 
   init {
-    startTelemetryTicker()
+    loadSavedDevices()
+    startDiscovery()
+    startPingTicker()
+    addLog("System Initialized", "TwinControl Controller active on ${LocalDeviceManager.getWifiSsid(context)}")
   }
 
-  private fun startTelemetryTicker() {
-    telemetryTicker?.cancel()
-    telemetryTicker = viewModelScope.launch {
+  fun startDiscovery() {
+    discoveryManager.startDiscovery()
+  }
+
+  fun stopDiscovery() {
+    discoveryManager.stopDiscovery()
+  }
+
+  fun addDirectDevice(ip: String, port: Int = TwinProtocol.CONTROL_PORT) {
+    discoveryManager.addDirectDevice(ip, port)
+    addLog("Direct IP Added", "Target candidate $ip:$port added to discovery")
+  }
+
+  private fun startPingTicker() {
+    pingJob?.cancel()
+    pingJob = viewModelScope.launch {
       while (true) {
         delay(2000)
-        if (_connectionState.value == ConnectionState.CONNECTED) {
-          val jitterLatency = (26..34).random().toLong()
-          _telemetry.value = _telemetry.value.copy(latencyMs = jitterLatency)
+        if (controllerClient.isConnected) {
+          controllerClient.sendPing()
         }
       }
     }
@@ -187,52 +211,78 @@ class ControllerViewModel : ViewModel() {
     addLog("Gesture Mode", "Switched mode to ${mode.name}")
   }
 
-  fun onScreenTouched(x: Float, y: Float) {
-    _lastTouchCoordinate.value = Pair(x, y)
-    val command = RemoteCommand(
-      commandId = UUID.randomUUID().toString(),
-      timestamp = System.currentTimeMillis(),
-      type = when (_gestureMode.value) {
-        GestureMode.TAP -> CommandType.TOUCH
-        GestureMode.LONG_PRESS -> CommandType.TOUCH
-        GestureMode.SWIPE -> CommandType.SWIPE
-        GestureMode.SCROLL -> CommandType.SCROLL
-      },
-      x = x,
-      y = y,
-    )
-    addLog("Input Dispatched", "${_gestureMode.value} at X:${x.toInt()}, Y:${y.toInt()}")
+  fun onScreenTouched(normX: Float, normY: Float) {
+    val displayW = _telemetry.value.resolutionWidth
+    val displayH = _telemetry.value.resolutionHeight
+    val pixelX = normX * displayW
+    val pixelY = normY * displayH
+    _lastTouchCoordinate.value = Pair(pixelX, pixelY)
+
+    if (controllerClient.isConnected) {
+      val action = when (_gestureMode.value) {
+        GestureMode.TAP -> "TAP"
+        GestureMode.LONG_PRESS -> "LONG_PRESS"
+        GestureMode.SWIPE -> "SWIPE"
+        GestureMode.SCROLL -> "SCROLL"
+      }
+      controllerClient.sendTouch(normX, normY, action)
+      addLog("Input Dispatched", "${_gestureMode.value} at (${pixelX.toInt()}, ${pixelY.toInt()})")
+    }
+  }
+
+  fun onScreenSwiped(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long = 300L) {
+    if (controllerClient.isConnected) {
+      controllerClient.sendSwipe(startX, startY, endX, endY, durationMs)
+      addLog("Swipe Dispatched", "Dispatched drag/swipe on Target")
+    }
   }
 
   fun sendNavigationCommand(commandType: CommandType) {
-    val command = RemoteCommand(
-      commandId = UUID.randomUUID().toString(),
-      timestamp = System.currentTimeMillis(),
-      type = commandType,
-    )
-    addLog("Navigation", "Dispatched ${commandType.name} action to Target Accessibility")
+    if (controllerClient.isConnected) {
+      controllerClient.sendNavigation(commandType)
+      addLog("Navigation", "Dispatched ${commandType.name} action to Target")
+    }
   }
 
   fun sendTextInput(text: String) {
-    if (text.isNotBlank()) {
+    if (text.isNotBlank() && controllerClient.isConnected) {
+      controllerClient.sendTextInput(text)
       addLog("Text Input", "Injected text: \"$text\" into focused field")
+    }
+  }
+
+  fun sendGlobalAction(action: String) {
+    if (controllerClient.isConnected) {
+      controllerClient.sendGlobalAction(action)
+      addLog("System Action", "Dispatched $action to Target")
+    }
+  }
+
+  fun sendVolume(direction: String) {
+    if (controllerClient.isConnected) {
+      controllerClient.sendVolume(direction)
+      addLog("Volume Action", "Volume $direction dispatched")
     }
   }
 
   fun toggleConnection() {
     if (_connectionState.value == ConnectionState.CONNECTED) {
-      _connectionState.value = ConnectionState.DISCONNECTED
-      _activeDevice.value = _activeDevice.value?.copy(isConnected = false)
-      addLog("Connection", "Disconnected from Target device")
+      disconnect()
     } else {
-      _connectionState.value = ConnectionState.CONNECTING
-      viewModelScope.launch {
-        delay(600)
-        _connectionState.value = ConnectionState.CONNECTED
-        _activeDevice.value = _activeDevice.value?.copy(isConnected = true)
-        addLog("Connection", "Reconnected securely to Target via Local TLS")
+      _activeDevice.value?.let { device ->
+        pairWithDevice(device)
       }
     }
+  }
+
+  fun disconnect() {
+    controllerClient.disconnect()
+    streamReceiver.stop()
+    _connectionState.value = ConnectionState.DISCONNECTED
+    _activeDevice.value = _activeDevice.value?.copy(isConnected = false)
+    _remoteScreenBitmap.value = null
+    _telemetry.value = _telemetry.value.copy(isMirroringActive = false, fps = 0)
+    addLog("Connection", "Disconnected from Target device")
   }
 
   fun setPinDigit(index: Int, char: String) {
@@ -243,22 +293,185 @@ class ControllerViewModel : ViewModel() {
     }
   }
 
+  fun appendPinDigit(char: String) {
+    val list = _pinDigits.value.toMutableList()
+    val firstEmpty = list.indexOfFirst { it.isEmpty() }
+    if (firstEmpty != -1) {
+      list[firstEmpty] = char
+      _pinDigits.value = list
+    }
+  }
+
+  fun popPinDigit() {
+    val list = _pinDigits.value.toMutableList()
+    val lastFilled = list.indexOfLast { it.isNotEmpty() }
+    if (lastFilled != -1) {
+      list[lastFilled] = ""
+      _pinDigits.value = list
+    }
+  }
+
+  fun setFullPin(pin: String) {
+    val cleaned = pin.filter { it.isDigit() }.take(6)
+    val list = MutableList(6) { "" }
+    for (i in cleaned.indices) {
+      list[i] = cleaned[i].toString()
+    }
+    _pinDigits.value = list
+  }
+
   fun clearPin() {
     _pinDigits.value = listOf("", "", "", "", "", "")
   }
 
-  fun pairWithDevice(device: DeviceInfo) {
+  fun getEnteredPin(): String {
+    return _pinDigits.value.joinToString("")
+  }
+
+  fun pairWithDevice(device: DeviceInfo, directPin: String? = null, silent: Boolean = false) {
+    val pinToUse = (directPin ?: if (device.silentConnectCapable || silent) device.pairingPin.ifEmpty { "SILENT_AUTO" } else getEnteredPin()).trim()
+    _activeDevice.value = device
     _connectionState.value = ConnectionState.PAIRING
+    _pairingState.value = PairingState.AUTHENTICATING
+
     viewModelScope.launch {
-      delay(800)
-      _activeDevice.value = device.copy(isConnected = true, isAuthorized = true)
-      _connectionState.value = ConnectionState.CONNECTED
-      addLog("Pairing", "Successfully authenticated with ${device.name}")
+      val isSilent = silent || device.silentConnectCapable || pinToUse == "SILENT_AUTO"
+      val methodStr = if (isSilent) "Silent Connect" else "Pairing"
+      addLog("Connection", "[$methodStr] Connecting to ${device.name} at ${device.ipAddress}:${device.port}...")
+      val connected = controllerClient.connect(device.ipAddress, device.port)
+      if (connected) {
+        addLog("Handshake", if (isSilent) "Performing instant silent handshake..." else "Sending authentication PIN to target...")
+        val myName = effectiveDeviceName.value
+        controllerClient.requestPair(pinToUse, myName, silentMode = isSilent)
+      } else {
+        _connectionState.value = ConnectionState.FAILED
+        _pairingState.value = PairingState.REJECTED
+        addLog("Connection Error", "Could not reach target at ${device.ipAddress}:${device.port}")
+      }
     }
   }
 
+  fun connectSilently(device: DeviceInfo) {
+    pairWithDevice(device, directPin = device.pairingPin.ifEmpty { "SILENT_AUTO" }, silent = true)
+  }
+
+  fun connectOverInternet(host: String, port: Int = TwinProtocol.CONTROL_PORT, tokenOrPin: String = "") {
+    val cleanHost = host.trim().removePrefix("http://").removePrefix("https://").removePrefix("tcp://")
+    val device = DeviceInfo(
+      id = "internet_${cleanHost.replace(".", "_")}_$port",
+      name = "Remote Device ($cleanHost)",
+      model = "Internet Remote Target",
+      ipAddress = cleanHost,
+      port = port,
+      isAuthorized = true,
+      isConnected = false,
+      locationTag = "Remote Internet (WAN)",
+      lastSeen = "Just now",
+      connectionMedium = "Internet",
+      silentConnectCapable = true,
+      pairingPin = tokenOrPin.ifEmpty { "SILENT_AUTO" },
+    )
+    pairWithDevice(device, directPin = tokenOrPin.ifEmpty { "SILENT_AUTO" }, silent = true)
+  }
+
+  fun pairFromQrString(qrString: String): Boolean {
+    val qrData = QrCodeUtil.parsePairingData(qrString) ?: return false
+    pairFromQrData(qrData)
+    return true
+  }
+
+  fun pairFromQrData(qrData: QrPairingData) {
+    addLog("QR Scanner", "Decoded valid pairing payload for ${qrData.deviceName} (${qrData.ipAddress})")
+    val device = DeviceInfo(
+      id = "device_${qrData.ipAddress.replace(".", "_")}",
+      name = qrData.deviceName,
+      model = qrData.deviceModel,
+      ipAddress = qrData.ipAddress,
+      port = qrData.port,
+      batteryPercent = 100,
+      wifiSsid = "Direct Network",
+      osVersion = "Android",
+      isAuthorized = true,
+      isConnected = false,
+    )
+    pairWithDevice(device, qrData.pin)
+  }
+
+  fun removeRecentDevice(device: DeviceInfo) {
+    val current = _recentDevices.value.toMutableList()
+    current.removeAll { it.id == device.id || it.ipAddress == device.ipAddress }
+    _recentDevices.value = current
+    saveRecentDevicesToStorage(current)
+    addLog("Trust Store", "Removed ${device.name} from paired devices")
+  }
+
+  private fun savePairedDevice(device: DeviceInfo) {
+    val current = _recentDevices.value.toMutableList()
+    val existingIndex = current.indexOfFirst { it.id == device.id || it.ipAddress == device.ipAddress }
+    if (existingIndex >= 0) {
+      current[existingIndex] = device
+    } else {
+      current.add(0, device)
+    }
+    _recentDevices.value = current
+    saveRecentDevicesToStorage(current)
+  }
+
+  private fun saveRecentDevicesToStorage(list: List<DeviceInfo>) {
+    val array = JSONArray()
+    for (d in list) {
+      val obj = JSONObject().apply {
+        put("id", d.id)
+        put("name", d.name)
+        put("model", d.model)
+        put("ipAddress", d.ipAddress)
+        put("port", d.port)
+        put("batteryPercent", d.batteryPercent)
+        put("wifiSsid", d.wifiSsid)
+        put("osVersion", d.osVersion)
+      }
+      array.put(obj)
+    }
+    prefs.edit().putString("saved_devices", array.toString()).apply()
+  }
+
+  private fun loadSavedDevices() {
+    val jsonStr = prefs.getString("saved_devices", null) ?: return
+    try {
+      val array = JSONArray(jsonStr)
+      val list = mutableListOf<DeviceInfo>()
+      for (i in 0 until array.length()) {
+        val obj = array.getJSONObject(i)
+        list.add(
+          DeviceInfo(
+            id = obj.getString("id"),
+            name = obj.getString("name"),
+            model = obj.optString("model", "Android Device"),
+            ipAddress = obj.getString("ipAddress"),
+            port = obj.optInt("port", TwinProtocol.CONTROL_PORT),
+            isAuthorized = true,
+            isConnected = false,
+            locationTag = "Paired Machine",
+            lastSeen = "Previously Paired",
+            batteryPercent = obj.optInt("batteryPercent", 80),
+            wifiSsid = obj.optString("wifiSsid", "Wi-Fi"),
+            osVersion = obj.optString("osVersion", "Android"),
+          )
+        )
+      }
+      _recentDevices.value = list
+    } catch (_: Exception) {}
+  }
+
   private fun addLog(type: String, detail: String) {
-    val time = "09:41:${(10..59).random()}"
-    _activityLogs.value = listOf(ActivityLogEntry(timestamp = time, type = type, detail = detail)) + _activityLogs.value.take(25)
+    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+    _activityLogs.value = listOf(ActivityLogEntry(timestamp = time, type = type, detail = detail)) + _activityLogs.value.take(40)
+  }
+
+  override fun onCleared() {
+    pingJob?.cancel()
+    disconnect()
+    stopDiscovery()
+    super.onCleared()
   }
 }

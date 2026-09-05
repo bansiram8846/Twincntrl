@@ -76,4 +76,24 @@ class RemoteAccessibilityService : AccessibilityService() {
     }
     return focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
   }
+
+  fun showNotifications(): Boolean {
+    return performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+  }
+
+  fun showQuickSettings(): Boolean {
+    return performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+  }
+
+  fun lockDevice(): Boolean {
+    return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+      performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+    } else {
+      false
+    }
+  }
+
+  fun showPowerDialog(): Boolean {
+    return performGlobalAction(GLOBAL_ACTION_POWER_DIALOG)
+  }
 }

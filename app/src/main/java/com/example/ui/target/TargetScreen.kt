@@ -2,6 +2,7 @@ package com.example.ui.target
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,9 +25,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Policy
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ScreenShare
 import androidx.compose.material.icons.filled.Settings
@@ -37,10 +40,12 @@ import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiTethering
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,9 +53,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,9 +67,12 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -89,6 +101,10 @@ fun TargetScreen(
   val isAccessibilityGranted by viewModel.isAccessibilityGranted.collectAsState()
   val isMediaProjectionGranted by viewModel.isMediaProjectionGranted.collectAsState()
   val isMulticastGranted by viewModel.isMulticastGranted.collectAsState()
+  val qrBitmap by viewModel.qrBitmap.collectAsState()
+
+  var showEnlargedQrDialog by remember { mutableStateOf(false) }
+  val clipboardManager = LocalClipboardManager.current
 
   val minutes = expirySeconds / 60
   val seconds = expirySeconds % 60
@@ -397,7 +413,7 @@ fun TargetScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                   )
                   Text(
-                    text = "Pixel 8 Pro (This Device)",
+                    text = "${viewModel.deviceName} (This Device)",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
                   )
@@ -627,52 +643,51 @@ fun TargetScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
               ) {
-                // QR Box representation
+                // Real QR Code Box
                 Box(
                   modifier = Modifier
                     .size(88.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.White)
-                    .padding(6.dp),
+                    .clickable { showEnlargedQrDialog = true }
+                    .padding(4.dp),
                   contentAlignment = Alignment.Center,
                 ) {
-                  Canvas(modifier = Modifier.fillMaxSize()) {
-                    val s = size.width
-                    drawRoundRect(
-                      color = Color.Black,
-                      topLeft = Offset(0f, 0f),
-                      size = Size(s * 0.35f, s * 0.35f),
-                      cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
-                      style = Stroke(3.dp.toPx()),
+                  if (qrBitmap != null) {
+                    Image(
+                      bitmap = qrBitmap!!.asImageBitmap(),
+                      contentDescription = "Pairing QR Code. Tap to view larger.",
+                      modifier = Modifier.fillMaxSize(),
                     )
-                    drawRoundRect(
-                      color = Color.Black,
-                      topLeft = Offset(s * 0.65f, 0f),
-                      size = Size(s * 0.35f, s * 0.35f),
-                      cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
-                      style = Stroke(3.dp.toPx()),
+                  } else {
+                    CircularProgressIndicator(
+                      modifier = Modifier.size(24.dp),
+                      strokeWidth = 2.dp,
                     )
-                    drawRoundRect(
-                      color = Color.Black,
-                      topLeft = Offset(0f, s * 0.65f),
-                      size = Size(s * 0.35f, s * 0.35f),
-                      cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
-                      style = Stroke(3.dp.toPx()),
-                    )
-                    drawCircle(Color.Black, radius = 5.dp.toPx(), center = Offset(s * 0.5f, s * 0.5f))
                   }
                 }
 
                 // Passcode & Regenerate
                 Column(modifier = Modifier.weight(1f)) {
-                  Text(
-                    text = "ONE-TIME PASSCODE",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                      fontSize = 10.sp,
-                      letterSpacing = 0.8.sp,
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                  )
+                  Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth(),
+                  ) {
+                    Text(
+                      text = "ONE-TIME PASSCODE",
+                      style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 10.sp,
+                        letterSpacing = 0.8.sp,
+                      ),
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                      text = "Tap QR to zoom",
+                      style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                      color = MaterialTheme.colorScheme.secondary,
+                    )
+                  }
                   Spacer(modifier = Modifier.height(2.dp))
                   Text(
                     text = passcode,
@@ -703,6 +718,110 @@ fun TargetScreen(
                   }
                 }
               }
+            }
+
+            // Enlarged QR Code Dialog
+            if (showEnlargedQrDialog) {
+              AlertDialog(
+                onDismissRequest = { showEnlargedQrDialog = false },
+                title = {
+                  Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                      imageVector = Icons.Default.QrCode,
+                      contentDescription = null,
+                      tint = MaterialTheme.colorScheme.primary,
+                      modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                      text = "Scan to Pair",
+                      style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                    )
+                  }
+                },
+                text = {
+                  Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth(),
+                  ) {
+                    Text(
+                      text = "Scan this QR code using the Controller app viewfinder or copy the direct pairing code.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Box(
+                      modifier = Modifier
+                        .size(220.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White)
+                        .padding(12.dp),
+                      contentAlignment = Alignment.Center,
+                    ) {
+                      if (qrBitmap != null) {
+                        Image(
+                          bitmap = qrBitmap!!.asImageBitmap(),
+                          contentDescription = "Enlarged Pairing QR Code",
+                          modifier = Modifier.fillMaxSize(),
+                        )
+                      } else {
+                        CircularProgressIndicator()
+                      }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Surface(
+                      color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                      shape = RoundedCornerShape(12.dp),
+                      modifier = Modifier.fillMaxWidth(),
+                    ) {
+                      Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                          Text(
+                            text = "Target IP: ${viewModel.localIpAddress}:8989",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurface,
+                          )
+                          Text(
+                            text = "PIN: $passcode",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.primary,
+                          )
+                        }
+                      }
+                    }
+                  }
+                },
+                confirmButton = {
+                  Button(
+                    onClick = {
+                      clipboardManager.setText(AnnotatedString(viewModel.pairingPayload))
+                      showEnlargedQrDialog = false
+                    },
+                  ) {
+                    Icon(
+                      imageVector = Icons.Default.ContentCopy,
+                      contentDescription = null,
+                      modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Copy Pairing Link")
+                  }
+                },
+                dismissButton = {
+                  TextButton(onClick = { showEnlargedQrDialog = false }) {
+                    Text("Close")
+                  }
+                },
+              )
             }
 
             // Granular Session Permissions Checkboxes
