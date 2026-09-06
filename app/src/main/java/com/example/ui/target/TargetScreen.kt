@@ -1,5 +1,7 @@
 package com.example.ui.target
 
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -23,22 +25,31 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Lan
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Policy
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ScreenShare
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -49,11 +60,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.example.network.protocol.TwinProtocol
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -102,6 +115,9 @@ fun TargetScreen(
   val isMediaProjectionGranted by viewModel.isMediaProjectionGranted.collectAsState()
   val isMulticastGranted by viewModel.isMulticastGranted.collectAsState()
   val qrBitmap by viewModel.qrBitmap.collectAsState()
+  val isSilentMode by viewModel.isSilentModeEnabled.collectAsState()
+  val selectedMedium by viewModel.selectedMedium.collectAsState()
+  val context = androidx.compose.ui.platform.LocalContext.current
 
   var showEnlargedQrDialog by remember { mutableStateOf(false) }
   val clipboardManager = LocalClipboardManager.current
@@ -370,6 +386,489 @@ fun TargetScreen(
           }
         }
 
+        // 3.5. HOW TO CONNECT ANOTHER DEVICE (Connection Center)
+        Surface(
+          color = MaterialTheme.colorScheme.surfaceContainerHigh,
+          shape = RoundedCornerShape(24.dp),
+          border = androidx.compose.foundation.BorderStroke(
+            1.5.dp,
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+          ),
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+          ) {
+            // Header
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                  modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                  contentAlignment = Alignment.Center,
+                ) {
+                  Icon(
+                    imageVector = Icons.Default.Bolt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(24.dp),
+                  )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                  Text(
+                    text = "How to Connect Controller",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                  )
+                  Text(
+                    text = "Select your preferred connection medium below",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
+                }
+              }
+            }
+
+            // Connection Medium Selector (4 Options)
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+              val mediums = listOf(
+                Triple("WIFI", "Silent Wi-Fi", Icons.Default.Wifi),
+                Triple("QR", "QR Code", Icons.Default.QrCode),
+                Triple("BLUETOOTH", "Bluetooth", Icons.Default.Bluetooth),
+                Triple("INTERNET", "Internet", Icons.Default.Public),
+              )
+              mediums.forEach { (id, label, icon) ->
+                val isSelected = selectedMedium == id
+                Surface(
+                  onClick = { viewModel.setSelectedMedium(id) },
+                  shape = RoundedCornerShape(12.dp),
+                  color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                  contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                  border = if (isSelected) null else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                  modifier = Modifier.weight(1f).height(46.dp),
+                ) {
+                  Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                  ) {
+                    Icon(
+                      imageVector = icon,
+                      contentDescription = label,
+                      modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                      text = label,
+                      style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
+                      maxLines = 1,
+                    )
+                  }
+                }
+              }
+            }
+
+            // Medium-Specific Detail Card
+            when (selectedMedium) {
+              "WIFI" -> {
+                // Silent Wi-Fi Card
+                Surface(
+                  color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                  shape = RoundedCornerShape(16.dp),
+                  border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (isSilentMode) StreamConnectedGreen.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                  ),
+                  modifier = Modifier.fillMaxWidth(),
+                ) {
+                  Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                  ) {
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      horizontalArrangement = Arrangement.SpaceBetween,
+                      verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                      Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                          modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(if (isSilentMode) StreamConnectedGreen else MaterialTheme.colorScheme.outline)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                          text = if (isSilentMode) "Silent Mode Active (Zero-Click)" else "Silent Mode Off",
+                          style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                          color = if (isSilentMode) StreamConnectedGreen else MaterialTheme.colorScheme.onSurface,
+                        )
+                      }
+                      Switch(
+                        checked = isSilentMode,
+                        onCheckedChange = { viewModel.toggleSilentMode(it) },
+                        colors = SwitchDefaults.colors(
+                          checkedThumbColor = StreamConnectedGreen,
+                          checkedTrackColor = StreamConnectedGreen.copy(alpha = 0.25f),
+                        ),
+                      )
+                    }
+
+                    Text(
+                      text = if (isSilentMode) {
+                        "Controllers on the same Wi-Fi ('${viewModel.wifiSsid}') can connect instantly with a single tap. No QR scan or PIN required!"
+                      } else {
+                        "Silent connect is turned off. Controllers must scan QR code or enter PIN to authorize."
+                      },
+                      style = MaterialTheme.typography.bodySmall,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      lineHeight = 18.sp,
+                    )
+
+                    Surface(
+                      color = MaterialTheme.colorScheme.surfaceContainer,
+                      shape = RoundedCornerShape(10.dp),
+                      modifier = Modifier.fillMaxWidth(),
+                    ) {
+                      Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                          Text(text = "Device Name:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                          Text(text = viewModel.deviceName, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
+                        }
+                        Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                          Text(text = "Wi-Fi Network:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                          Text(text = viewModel.wifiSsid, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
+                        }
+                        Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                          Text(text = "Local Endpoint:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                          Text(text = "${viewModel.localIpAddress}:${TwinProtocol.CONTROL_PORT}", style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                        }
+                      }
+                    }
+
+                    // Easy 3-step Instructions
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                      Text(
+                        text = "Quick Connection Steps:",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                      )
+                      Text(
+                        text = "1. Open TwinControl on your second phone (Controller Mode).\n2. Tap 'Devices' or look at the 'Nearby Devices' list.\n3. Tap '⚡ Silent Connect' next to '${viewModel.deviceName}'.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 19.sp,
+                      )
+                    }
+                  }
+                }
+              }
+
+              "QR" -> {
+                // QR Code & PIN Card
+                Surface(
+                  color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                  shape = RoundedCornerShape(16.dp),
+                  border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                  modifier = Modifier.fillMaxWidth(),
+                ) {
+                  Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                  ) {
+                    Text(
+                      text = "Point Controller camera at this QR code:",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    // Prominent QR Code Box
+                    Box(
+                      modifier = Modifier
+                        .size(190.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White)
+                        .clickable { showEnlargedQrDialog = true }
+                        .padding(8.dp),
+                      contentAlignment = Alignment.Center,
+                    ) {
+                      if (qrBitmap != null) {
+                        Image(
+                          bitmap = qrBitmap!!.asImageBitmap(),
+                          contentDescription = "Target Pairing QR Code. Tap to view fullscreen.",
+                          modifier = Modifier.fillMaxSize(),
+                        )
+                      } else {
+                        CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                      }
+                    }
+
+                    // Passcode Display & Actions
+                    Column(
+                      horizontalAlignment = Alignment.CenterHorizontally,
+                      verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                      Text(
+                        text = "OR ENTER 6-DIGIT PIN",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 1.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      )
+                      Text(
+                        text = passcode,
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                          fontFamily = FontFamily.Monospace,
+                          fontWeight = FontWeight.Bold,
+                          letterSpacing = 4.sp,
+                        ),
+                        color = MaterialTheme.colorScheme.primary,
+                      )
+                      Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                      ) {
+                        Row(
+                          modifier = Modifier.clickable { viewModel.regeneratePasscode() },
+                          verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                          Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(14.dp),
+                          )
+                          Spacer(modifier = Modifier.width(4.dp))
+                          Text(
+                            text = "Regenerate",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.secondary,
+                          )
+                        }
+                        Text(
+                          text = "Expires in $expiryFormatted",
+                          style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                          color = MaterialTheme.colorScheme.error,
+                        )
+                      }
+                    }
+
+                    // Action Buttons: Copy Link & Share
+                    Row(
+                      modifier = Modifier.fillMaxWidth(),
+                      horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                      OutlinedButton(
+                        onClick = {
+                          clipboardManager.setText(AnnotatedString(viewModel.pairingPayload))
+                          Toast.makeText(context, "Pairing link copied to clipboard", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).height(38.dp),
+                      ) {
+                        Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Copy Link", style = MaterialTheme.typography.labelSmall)
+                      }
+
+                      OutlinedButton(
+                        onClick = {
+                          val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            putExtra(Intent.EXTRA_TEXT, "TwinControl Pairing Code: $passcode\nDirect Link: ${viewModel.pairingPayload}")
+                            type = "text/plain"
+                          }
+                          val shareIntent = Intent.createChooser(sendIntent, "Share Pairing Code")
+                          shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                          context.startActivity(shareIntent)
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).height(38.dp),
+                      ) {
+                        Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Share", style = MaterialTheme.typography.labelSmall)
+                      }
+                    }
+                  }
+                }
+              }
+
+              "BLUETOOTH" -> {
+                // Bluetooth Proximity Card
+                Surface(
+                  color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                  shape = RoundedCornerShape(16.dp),
+                  border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                  modifier = Modifier.fillMaxWidth(),
+                ) {
+                  Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                  ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                      Box(
+                        modifier = Modifier
+                          .size(36.dp)
+                          .clip(RoundedCornerShape(8.dp))
+                          .background(MaterialTheme.colorScheme.secondaryContainer),
+                        contentAlignment = Alignment.Center,
+                      ) {
+                        Icon(
+                          imageVector = Icons.Default.Bluetooth,
+                          contentDescription = null,
+                          tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                          modifier = Modifier.size(20.dp),
+                        )
+                      }
+                      Spacer(modifier = Modifier.width(10.dp))
+                      Column {
+                        Text(
+                          text = "Bluetooth Proximity Discovery",
+                          style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                          color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                          text = "Connect without sharing a Wi-Fi network",
+                          style = MaterialTheme.typography.bodySmall,
+                          color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                      }
+                    }
+
+                    Surface(
+                      color = MaterialTheme.colorScheme.surfaceContainer,
+                      shape = RoundedCornerShape(10.dp),
+                      modifier = Modifier.fillMaxWidth(),
+                    ) {
+                      Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                          Text(text = "Bluetooth Name:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                          Text(text = viewModel.bluetoothName, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onSurface)
+                        }
+                        Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                          Text(text = "Proximity ID:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                          Text(text = viewModel.bluetoothAddress, style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace), color = MaterialTheme.colorScheme.secondary)
+                        }
+                      }
+                    }
+
+                    Text(
+                      text = "How to connect via Bluetooth:\n1. Ensure Bluetooth is ON on both devices.\n2. On the Controller phone, open 'Pair Device' > 'Bluetooth'.\n3. Tap '${viewModel.bluetoothName}' to connect silently.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      lineHeight = 19.sp,
+                    )
+                  }
+                }
+              }
+
+              "INTERNET" -> {
+                // Over Internet Card
+                Surface(
+                  color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                  shape = RoundedCornerShape(16.dp),
+                  border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                  modifier = Modifier.fillMaxWidth(),
+                ) {
+                  Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                  ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                      Box(
+                        modifier = Modifier
+                          .size(36.dp)
+                          .clip(RoundedCornerShape(8.dp))
+                          .background(MaterialTheme.colorScheme.tertiaryContainer),
+                        contentAlignment = Alignment.Center,
+                      ) {
+                        Icon(
+                          imageVector = Icons.Default.Public,
+                          contentDescription = null,
+                          tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                          modifier = Modifier.size(20.dp),
+                        )
+                      }
+                      Spacer(modifier = Modifier.width(10.dp))
+                      Column {
+                        Text(
+                          text = "Connect Over Internet (WAN)",
+                          style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                          color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                          text = "Remote access across different networks or cellular data",
+                          style = MaterialTheme.typography.bodySmall,
+                          color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                      }
+                    }
+
+                    Surface(
+                      color = MaterialTheme.colorScheme.surfaceContainer,
+                      shape = RoundedCornerShape(10.dp),
+                      modifier = Modifier.fillMaxWidth(),
+                    ) {
+                      Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(text = "Target Network Endpoint:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                          text = "tcp://${viewModel.localIpAddress}:${TwinProtocol.CONTROL_PORT}",
+                          style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+                          color = MaterialTheme.colorScheme.primary,
+                        )
+                        OutlinedButton(
+                          onClick = {
+                            clipboardManager.setText(AnnotatedString("${viewModel.localIpAddress}:${TwinProtocol.CONTROL_PORT}"))
+                            Toast.makeText(context, "Internet endpoint address copied", Toast.LENGTH_SHORT).show()
+                          },
+                          shape = RoundedCornerShape(8.dp),
+                          modifier = Modifier.fillMaxWidth().height(34.dp),
+                        ) {
+                          Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                          Spacer(modifier = Modifier.width(6.dp))
+                          Text("Copy Endpoint Address", style = MaterialTheme.typography.labelSmall)
+                        }
+                      }
+                    }
+
+                    Text(
+                      text = "How to connect over Internet:\n1. On your controller device, navigate to 'Pair Device' > 'Over Internet'.\n2. Enter this IP address (or router WAN IP with port ${TwinProtocol.CONTROL_PORT} forwarded).\n3. Tap 'Connect Over Internet' to control this device from anywhere.",
+                      style = MaterialTheme.typography.bodySmall,
+                      color = MaterialTheme.colorScheme.onSurfaceVariant,
+                      lineHeight = 19.sp,
+                    )
+                  }
+                }
+              }
+            }
+          }
+        }
+
         // 4. Main Device Status Card
         Surface(
           color = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -579,7 +1078,7 @@ fun TargetScreen(
           }
         }
 
-        // 5. Active Pairing & Connection Credentials Bento Card
+        // 5. Session Security & Control Permissions Bento Card
         Surface(
           color = MaterialTheme.colorScheme.surfaceContainer,
           shape = RoundedCornerShape(20.dp),
@@ -600,228 +1099,16 @@ fun TargetScreen(
             ) {
               Column {
                 Text(
-                  text = "Pairing & Session Credentials",
+                  text = "Session Control Permissions",
                   style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                   color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                  text = "Scan or enter this temporary token on your secondary controller device.",
+                  text = "Configure granular permissions allowed for connected controllers.",
                   style = MaterialTheme.typography.bodySmall,
                   color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
               }
-              Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-              ) {
-                Icon(
-                  imageVector = Icons.Default.Timer,
-                  contentDescription = null,
-                  tint = MaterialTheme.colorScheme.error,
-                  modifier = Modifier.size(14.dp),
-                )
-                Text(
-                  text = "Expires in $expiryFormatted",
-                  style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                  color = MaterialTheme.colorScheme.error,
-                )
-              }
-            }
-
-            // QR & Passcode Display Box
-            Surface(
-              color = MaterialTheme.colorScheme.surfaceContainerLowest,
-              shape = RoundedCornerShape(14.dp),
-              border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
-              ),
-              modifier = Modifier.fillMaxWidth(),
-            ) {
-              Row(
-                modifier = Modifier.padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-              ) {
-                // Real QR Code Box
-                Box(
-                  modifier = Modifier
-                    .size(88.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White)
-                    .clickable { showEnlargedQrDialog = true }
-                    .padding(4.dp),
-                  contentAlignment = Alignment.Center,
-                ) {
-                  if (qrBitmap != null) {
-                    Image(
-                      bitmap = qrBitmap!!.asImageBitmap(),
-                      contentDescription = "Pairing QR Code. Tap to view larger.",
-                      modifier = Modifier.fillMaxSize(),
-                    )
-                  } else {
-                    CircularProgressIndicator(
-                      modifier = Modifier.size(24.dp),
-                      strokeWidth = 2.dp,
-                    )
-                  }
-                }
-
-                // Passcode & Regenerate
-                Column(modifier = Modifier.weight(1f)) {
-                  Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth(),
-                  ) {
-                    Text(
-                      text = "ONE-TIME PASSCODE",
-                      style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 10.sp,
-                        letterSpacing = 0.8.sp,
-                      ),
-                      color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                      text = "Tap QR to zoom",
-                      style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                      color = MaterialTheme.colorScheme.secondary,
-                    )
-                  }
-                  Spacer(modifier = Modifier.height(2.dp))
-                  Text(
-                    text = passcode,
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                      fontFamily = FontFamily.Monospace,
-                      fontWeight = FontWeight.Bold,
-                      letterSpacing = 2.sp,
-                    ),
-                    color = MaterialTheme.colorScheme.primary,
-                  )
-                  Spacer(modifier = Modifier.height(4.dp))
-                  Row(
-                    modifier = Modifier.clickable { viewModel.regeneratePasscode() },
-                    verticalAlignment = Alignment.CenterVertically,
-                  ) {
-                    Icon(
-                      imageVector = Icons.Default.Refresh,
-                      contentDescription = null,
-                      tint = MaterialTheme.colorScheme.secondary,
-                      modifier = Modifier.size(13.dp),
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                      text = "Regenerate Code",
-                      style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                      color = MaterialTheme.colorScheme.secondary,
-                    )
-                  }
-                }
-              }
-            }
-
-            // Enlarged QR Code Dialog
-            if (showEnlargedQrDialog) {
-              AlertDialog(
-                onDismissRequest = { showEnlargedQrDialog = false },
-                title = {
-                  Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                      imageVector = Icons.Default.QrCode,
-                      contentDescription = null,
-                      tint = MaterialTheme.colorScheme.primary,
-                      modifier = Modifier.size(22.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                      text = "Scan to Pair",
-                      style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    )
-                  }
-                },
-                text = {
-                  Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth(),
-                  ) {
-                    Text(
-                      text = "Scan this QR code using the Controller app viewfinder or copy the direct pairing code.",
-                      style = MaterialTheme.typography.bodySmall,
-                      color = MaterialTheme.colorScheme.onSurfaceVariant,
-                      textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Box(
-                      modifier = Modifier
-                        .size(220.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White)
-                        .padding(12.dp),
-                      contentAlignment = Alignment.Center,
-                    ) {
-                      if (qrBitmap != null) {
-                        Image(
-                          bitmap = qrBitmap!!.asImageBitmap(),
-                          contentDescription = "Enlarged Pairing QR Code",
-                          modifier = Modifier.fillMaxSize(),
-                        )
-                      } else {
-                        CircularProgressIndicator()
-                      }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Surface(
-                      color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                      shape = RoundedCornerShape(12.dp),
-                      modifier = Modifier.fillMaxWidth(),
-                    ) {
-                      Column(modifier = Modifier.padding(10.dp)) {
-                        Row(
-                          modifier = Modifier.fillMaxWidth(),
-                          horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                          Text(
-                            text = "Target IP: ${viewModel.localIpAddress}:8989",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.onSurface,
-                          )
-                          Text(
-                            text = "PIN: $passcode",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                            fontFamily = FontFamily.Monospace,
-                            color = MaterialTheme.colorScheme.primary,
-                          )
-                        }
-                      }
-                    }
-                  }
-                },
-                confirmButton = {
-                  Button(
-                    onClick = {
-                      clipboardManager.setText(AnnotatedString(viewModel.pairingPayload))
-                      showEnlargedQrDialog = false
-                    },
-                  ) {
-                    Icon(
-                      imageVector = Icons.Default.ContentCopy,
-                      contentDescription = null,
-                      modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Copy Pairing Link")
-                  }
-                },
-                dismissButton = {
-                  TextButton(onClick = { showEnlargedQrDialog = false }) {
-                    Text("Close")
-                  }
-                },
-              )
             }
 
             // Granular Session Permissions Checkboxes

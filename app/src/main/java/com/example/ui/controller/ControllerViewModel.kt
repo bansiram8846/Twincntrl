@@ -185,6 +185,10 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     discoveryManager.startDiscovery()
   }
 
+  fun refreshNearbyDevices() {
+    discoveryManager.startDiscovery()
+  }
+
   fun stopDiscovery() {
     discoveryManager.stopDiscovery()
   }

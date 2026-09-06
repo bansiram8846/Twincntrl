@@ -23,6 +23,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,6 +40,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backspace
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Dialpad
@@ -49,7 +52,9 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Pin
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Smartphone
@@ -101,13 +106,16 @@ fun PairDeviceScreen(
   onSwitchToTargetMode: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
-  var selectedTab by remember { mutableIntStateOf(0) } // 0 = QR, 1 = PIN
+  var selectedTab by remember { mutableIntStateOf(0) } // 0 = Silent Wi-Fi, 1 = QR & PIN, 2 = Bluetooth, 3 = Internet
   var isTorchOn by remember { mutableStateOf(false) }
   var showDirectIpDialog by remember { mutableStateOf(false) }
   var showPasteQrDialog by remember { mutableStateOf(false) }
   var pasteQrInput by remember { mutableStateOf("") }
   var targetIpInput by remember { mutableStateOf("") }
-  var targetPortInput by remember { mutableStateOf("8989") }
+  var targetPortInput by remember { mutableStateOf("8888") }
+  var internetHostInput by remember { mutableStateOf("") }
+  var internetPortInput by remember { mutableStateOf("8888") }
+  var internetPinInput by remember { mutableStateOf("") }
 
   val context = LocalContext.current
   var hasCameraPermission by remember {
@@ -303,10 +311,10 @@ fun PairDeviceScreen(
           }
         }
 
-        // 3. Segmented Switcher [QR Code] vs [Pairing Code (PIN)]
+        // 3. Segmented Switcher [Silent Wi-Fi, QR & PIN, Bluetooth, Internet]
         Surface(
           color = MaterialTheme.colorScheme.surfaceContainer,
-          shape = RoundedCornerShape(9999.dp),
+          shape = RoundedCornerShape(16.dp),
           border = androidx.compose.foundation.BorderStroke(
             1.dp,
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
@@ -317,55 +325,71 @@ fun PairDeviceScreen(
             modifier = Modifier.padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
           ) {
-            Button(
-              onClick = { selectedTab = 0 },
-              shape = RoundedCornerShape(9999.dp),
-              colors = ButtonDefaults.buttonColors(
-                containerColor = if (selectedTab == 0) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-                contentColor = if (selectedTab == 0) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-              ),
-              elevation = null,
-              modifier = Modifier.weight(1f).height(40.dp),
-            ) {
-              Icon(
-                imageVector = Icons.Default.QrCodeScanner,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-              )
-              Spacer(modifier = Modifier.width(6.dp))
-              Text(
-                text = "QR Code",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-              )
-            }
-
-            Button(
-              onClick = { selectedTab = 1 },
-              shape = RoundedCornerShape(9999.dp),
-              colors = ButtonDefaults.buttonColors(
-                containerColor = if (selectedTab == 1) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-                contentColor = if (selectedTab == 1) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-              ),
-              elevation = null,
-              modifier = Modifier.weight(1f).height(40.dp),
-            ) {
-              Icon(
-                imageVector = Icons.Default.Dialpad,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-              )
-              Spacer(modifier = Modifier.width(6.dp))
-              Text(
-                text = "Pairing Code (PIN)",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-              )
+            val tabs = listOf(
+              Triple(0, "Silent Wi-Fi", Icons.Default.Bolt),
+              Triple(1, "QR / PIN", Icons.Default.QrCodeScanner),
+              Triple(2, "Bluetooth", Icons.Default.Bluetooth),
+              Triple(3, "Internet", Icons.Default.Public),
+            )
+            tabs.forEach { (index, title, icon) ->
+              val isSelected = selectedTab == index
+              Button(
+                onClick = { selectedTab = index },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                  contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+                elevation = null,
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                modifier = Modifier.weight(1f).height(46.dp),
+              ) {
+                Column(
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                  verticalArrangement = Arrangement.Center,
+                ) {
+                  Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                  )
+                  Spacer(modifier = Modifier.height(2.dp))
+                  Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                      fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                      fontSize = 9.sp,
+                    ),
+                    maxLines = 1,
+                  )
+                }
+              }
             }
           }
         }
 
-        // 4. Content based on Selected Tab [0 = QR Code, 1 = PIN]
-        if (selectedTab == 0) {
-          Surface(
+        // 4. Content based on Selected Tab [0 = Silent Wi-Fi, 1 = QR / PIN, 2 = Bluetooth, 3 = Internet]
+        when (selectedTab) {
+          0 -> {
+            SilentWifiConnectTab(
+              nearbyDevices = nearbyDevices,
+              onSilentConnect = { device ->
+                viewModel.connectSilently(device)
+                Toast.makeText(context, "Silent connection established with ${device.name}!", Toast.LENGTH_SHORT).show()
+                onNavigateBack()
+              },
+              onRequestAccess = { device ->
+                viewModel.pairWithDevice(device)
+                onNavigateBack()
+              },
+              onRefresh = { viewModel.refreshNearbyDevices() },
+              onDirectIpFallback = { showDirectIpDialog = true },
+            )
+          }
+
+          1 -> {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+              Surface(
             color = MaterialTheme.colorScheme.surfaceContainerLowest,
             shape = RoundedCornerShape(28.dp),
             border = androidx.compose.foundation.BorderStroke(
@@ -599,7 +623,7 @@ fun PairDeviceScreen(
               }
             }
           }
-        } else {
+
           // 5. 6-Digit Numeric Pairing Code (PIN)
           Surface(
             color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -737,6 +761,49 @@ fun PairDeviceScreen(
             }
           }
         }
+      }
+
+          2 -> {
+            BluetoothConnectTab(
+              nearbyDevices = nearbyDevices,
+              onSilentConnect = { device ->
+                viewModel.connectSilently(device)
+                Toast.makeText(context, "Bluetooth connection established with ${device.name}!", Toast.LENGTH_SHORT).show()
+                onNavigateBack()
+              },
+              onRequestAccess = { device ->
+                viewModel.pairWithDevice(device)
+                onNavigateBack()
+              },
+              onQuickConnect = {
+                val localIp = LocalDeviceManager.getLocalIpAddress(context)
+                viewModel.connectOverInternet(localIp, TwinProtocol.CONTROL_PORT, "")
+                Toast.makeText(context, "Connecting to target via Bluetooth proximity...", Toast.LENGTH_SHORT).show()
+                onNavigateBack()
+              },
+            )
+          }
+
+          3 -> {
+            InternetConnectTab(
+              hostInput = internetHostInput,
+              onHostChange = { internetHostInput = it },
+              portInput = internetPortInput,
+              onPortChange = { internetPortInput = it },
+              pinInput = internetPinInput,
+              onPinChange = { internetPinInput = it },
+              onConnect = { host, port, pin ->
+                if (host.isNotBlank()) {
+                  viewModel.connectOverInternet(host, port, pin)
+                  Toast.makeText(context, "Connecting over internet to $host:$port...", Toast.LENGTH_SHORT).show()
+                  onNavigateBack()
+                } else {
+                  Toast.makeText(context, "Please enter target IP address or hostname", Toast.LENGTH_SHORT).show()
+                }
+              },
+            )
+          }
+        }
 
         // 6. Nearby Discoverable Devices Section (mDNS)
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -823,6 +890,11 @@ fun PairDeviceScreen(
             nearbyDevices.forEach { device ->
               NearbyDeviceItem(
                 device = device,
+                onSilentConnect = {
+                  viewModel.connectSilently(device)
+                  Toast.makeText(context, "Silent connection established with ${device.name}!", Toast.LENGTH_SHORT).show()
+                  onNavigateBack()
+                },
                 onRequestAccess = {
                   viewModel.pairWithDevice(device)
                   onNavigateBack()
@@ -1024,6 +1096,7 @@ fun PairDeviceScreen(
 @Composable
 private fun NearbyDeviceItem(
   device: DeviceInfo,
+  onSilentConnect: () -> Unit,
   onRequestAccess: () -> Unit,
 ) {
   Surface(
@@ -1067,15 +1140,27 @@ private fun NearbyDeviceItem(
               color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(modifier = Modifier.width(6.dp))
-            Text(
-              text = device.locationTag,
-              style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-              color = MaterialTheme.colorScheme.secondary,
-              modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f))
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-            )
+            if (device.silentConnectCapable) {
+              Text(
+                text = "⚡ SILENT",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                color = StreamConnectedGreen,
+                modifier = Modifier
+                  .clip(RoundedCornerShape(4.dp))
+                  .background(StreamConnectedGreen.copy(alpha = 0.15f))
+                  .padding(horizontal = 5.dp, vertical = 2.dp),
+              )
+            } else {
+              Text(
+                text = device.locationTag,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier
+                  .clip(RoundedCornerShape(4.dp))
+                  .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f))
+                  .padding(horizontal = 6.dp, vertical = 2.dp),
+              )
+            }
           }
           Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -1106,19 +1191,39 @@ private fun NearbyDeviceItem(
         }
       }
 
-      Button(
-        onClick = onRequestAccess,
-        shape = RoundedCornerShape(9999.dp),
-        colors = ButtonDefaults.buttonColors(
-          containerColor = MaterialTheme.colorScheme.primaryContainer,
-          contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        ),
-        modifier = Modifier.height(34.dp),
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
       ) {
-        Text(
-          text = if (device.model.contains("Workstation")) "Pair" else "Request Access",
-          style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-        )
+        if (device.silentConnectCapable) {
+          Button(
+            onClick = onSilentConnect,
+            shape = RoundedCornerShape(9999.dp),
+            colors = ButtonDefaults.buttonColors(
+              containerColor = StreamConnectedGreen,
+              contentColor = Color.Black,
+            ),
+            modifier = Modifier.height(34.dp),
+          ) {
+            Icon(imageVector = Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(14.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+              text = "Connect",
+              style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            )
+          }
+        }
+
+        OutlinedButton(
+          onClick = onRequestAccess,
+          shape = RoundedCornerShape(9999.dp),
+          modifier = Modifier.height(34.dp),
+        ) {
+          Text(
+            text = if (device.silentConnectCapable) "PIN" else "Pair",
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+          )
+        }
       }
     }
   }

@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.view.accessibility.AccessibilityManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.network.BluetoothHelper
 import com.example.network.LocalDeviceManager
 import com.example.network.discovery.DiscoveryManager
 import com.example.network.server.ScreenStreamServer
