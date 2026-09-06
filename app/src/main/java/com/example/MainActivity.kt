@@ -13,13 +13,31 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.TwinControlTheme
 
 class MainActivity : ComponentActivity() {
+  companion object {
+    var currentActivity: MainActivity? = null
+      private set
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    currentActivity = this
     enableEdgeToEdge()
     setContent {
       TwinControlTheme {
         TwinControlApp()
       }
+    }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    currentActivity = this
+  }
+
+  override fun onDestroy() {
+    super.onDestroy()
+    if (currentActivity == this) {
+      currentActivity = null
     }
   }
 }

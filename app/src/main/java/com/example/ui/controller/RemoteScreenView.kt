@@ -457,7 +457,7 @@ fun RemoteScreenView(
               contentScale = ContentScale.Fit,
             )
           } else {
-            ProperConnectedMobileScreen(
+            TargetModeDeviceScreenView(
               device = activeDevice,
               onTouch = { x, y -> viewModel.onScreenTouched(x, y) },
             )
@@ -1005,282 +1005,310 @@ private fun VisualRemoteActionTile(
 }
 
 @Composable
-private fun ModernAppIcon(
-  name: String,
-  icon: ImageVector,
-  color: Color,
-  isDock: Boolean = false,
-  onClick: () -> Unit = {},
-) {
-  Column(
-    horizontalAlignment = Alignment.CenterHorizontally,
-    modifier = Modifier
-      .width(if (isDock) 52.dp else 56.dp)
-      .clickable(onClick = onClick),
-  ) {
-    Box(
-      modifier = Modifier
-        .size(if (isDock) 42.dp else 44.dp)
-        .clip(RoundedCornerShape(13.dp))
-        .background(
-          brush = Brush.linearGradient(
-            colors = listOf(color, color.copy(alpha = 0.82f))
-          )
-        )
-        .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(13.dp)),
-      contentAlignment = Alignment.Center,
-    ) {
-      Icon(
-        imageVector = icon,
-        contentDescription = name,
-        tint = Color.White,
-        modifier = Modifier.size(if (isDock) 20.dp else 22.dp),
-      )
-    }
-    if (!isDock) {
-      Spacer(modifier = Modifier.height(3.dp))
-      Text(
-        text = name,
-        style = MaterialTheme.typography.labelSmall.copy(
-          fontSize = 10.sp,
-          fontWeight = FontWeight.Medium,
-        ),
-        color = Color.White.copy(alpha = 0.95f),
-        maxLines = 1,
-      )
-    }
-  }
-}
-
-@Composable
-private fun ProperConnectedMobileScreen(
+private fun TargetModeDeviceScreenView(
   device: DeviceInfo?,
   onTouch: (Float, Float) -> Unit,
 ) {
-  val timeFormat = remember { SimpleDateFormat("h:mm", Locale.getDefault()) }
-  val dateFormat = remember { SimpleDateFormat("EEEE, MMM d", Locale.getDefault()) }
-  val now = remember { Date() }
-
-  Box(
+  Column(
     modifier = Modifier
       .fillMaxSize()
       .background(
         brush = Brush.verticalGradient(
           colors = listOf(
-            Color(0xFF0F2027),
-            Color(0xFF203A43),
-            Color(0xFF2C5364),
+            Color(0xFF0D1B2A),
+            Color(0xFF1B263B),
+            Color(0xFF101924),
           )
         )
       )
+      .padding(10.dp),
+    verticalArrangement = Arrangement.SpaceBetween,
   ) {
-    // Ambient glowing radial backdrop
-    Box(
-      modifier = Modifier
-        .size(260.dp)
-        .align(Alignment.TopEnd)
-        .background(
-          brush = Brush.radialGradient(
-            colors = listOf(
-              Color(0x3300D2FF),
-              Color.Transparent,
-            )
-          )
-        )
-    )
-
-    Column(
-      modifier = Modifier
-        .fillMaxSize()
-        .padding(horizontal = 14.dp, vertical = 8.dp),
-      verticalArrangement = Arrangement.SpaceBetween,
+    // 1. Top Target System Status Bar
+    Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
     ) {
-      // Top Android System Status Bar
       Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
       ) {
-        // Notification indicators
-        Row(
-          horizontalArrangement = Arrangement.spacedBy(5.dp),
-          verticalAlignment = Alignment.CenterVertically,
-        ) {
-          Icon(Icons.Default.Chat, contentDescription = null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(11.dp))
-          Icon(Icons.Default.Email, contentDescription = null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(11.dp))
-        }
-
-        // Telemetry & Status
-        Row(
-          horizontalArrangement = Arrangement.spacedBy(4.dp),
-          verticalAlignment = Alignment.CenterVertically,
-        ) {
-          Icon(Icons.Default.SignalCellularAlt, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(12.dp))
-          Icon(Icons.Default.Wifi, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(12.dp))
-          Text(
-            text = "${device?.batteryPercent ?: 92}%",
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
-            color = Color.White.copy(alpha = 0.9f),
-          )
-          Icon(Icons.Default.BatteryChargingFull, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(12.dp))
-        }
+        Box(
+          modifier = Modifier
+            .size(7.dp)
+            .clip(CircleShape)
+            .background(StreamConnectedGreen)
+        )
+        Text(
+          text = "TwinControl • Target Mode",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+          ),
+          color = StreamConnectedGreen,
+        )
       }
 
-      // Dynamic Clock & Weather Widget
-      Column(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(top = 2.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
       ) {
+        Icon(Icons.Default.Wifi, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(12.dp))
         Text(
-          text = timeFormat.format(now),
-          style = MaterialTheme.typography.displayMedium.copy(
-            fontWeight = FontWeight.Bold,
-            fontSize = 38.sp,
-            letterSpacing = (-1.5).sp,
-          ),
-          color = Color.White,
+          text = "${device?.batteryPercent ?: 95}%",
+          style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+          color = Color.White.copy(alpha = 0.9f),
         )
-        Text(
-          text = "${dateFormat.format(now)} • 72°F Sunny",
-          style = MaterialTheme.typography.bodySmall.copy(
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-          ),
-          color = Color.White.copy(alpha = 0.85f),
-        )
-        Spacer(modifier = Modifier.height(4.dp))
+        Icon(Icons.Default.BatteryChargingFull, contentDescription = null, tint = StreamConnectedGreen, modifier = Modifier.size(12.dp))
+      }
+    }
 
-        // Device Connected Pill
+    // 2. Target Device Identification Card
+    Surface(
+      color = Color.White.copy(alpha = 0.08f),
+      shape = RoundedCornerShape(14.dp),
+      border = androidx.compose.foundation.BorderStroke(1.dp, StreamConnectedGreen.copy(alpha = 0.4f)),
+      modifier = Modifier
+        .fillMaxWidth()
+        .clickable { onTouch(0.5f, 0.2f) },
+    ) {
+      Column(
+        modifier = Modifier.padding(10.dp),
+      ) {
         Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier
-            .clip(RoundedCornerShape(9999.dp))
-            .background(Color.Black.copy(alpha = 0.45f))
-            .border(1.dp, StreamConnectedGreen.copy(alpha = 0.4f), RoundedCornerShape(9999.dp))
-            .padding(horizontal = 8.dp, vertical = 2.dp),
         ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+          ) {
+            Box(
+              modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(StreamConnectedGreen.copy(alpha = 0.2f)),
+              contentAlignment = Alignment.Center,
+            ) {
+              Icon(Icons.Default.Sensors, contentDescription = null, tint = StreamConnectedGreen, modifier = Modifier.size(16.dp))
+            }
+            Column {
+              Text(
+                text = device?.name ?: "Remote Target Android",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+                maxLines = 1,
+              )
+              Text(
+                text = "${device?.ipAddress ?: "192.168.1.45"}:8989",
+                style = MaterialTheme.typography.labelSmall.copy(
+                  fontSize = 9.sp,
+                  fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                ),
+                color = Color.White.copy(alpha = 0.7f),
+              )
+            }
+          }
+
+          // Active Badge
           Box(
             modifier = Modifier
-              .size(5.dp)
-              .clip(CircleShape)
-              .background(StreamConnectedGreen)
-          )
-          Spacer(modifier = Modifier.width(5.dp))
+              .clip(RoundedCornerShape(9999.dp))
+              .background(StreamConnectedGreen.copy(alpha = 0.2f))
+              .border(1.dp, StreamConnectedGreen.copy(alpha = 0.6f), RoundedCornerShape(9999.dp))
+              .padding(horizontal = 7.dp, vertical = 2.dp),
+          ) {
+            Text(
+              text = "Connected",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+              ),
+              color = StreamConnectedGreen,
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.1f)))
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
           Text(
-            text = "${device?.name ?: "Mobile Phone"} • Live Sync",
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+            text = "Passcode Authorization",
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+            color = Color.White.copy(alpha = 0.75f),
+          )
+          Text(
+            text = "Silent Auto-Paired",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 10.sp,
+              fontWeight = FontWeight.Bold,
+            ),
             color = StreamConnectedGreen,
           )
         }
       }
+    }
 
-      // Quick Search Widget
-      Surface(
-        color = Color.White.copy(alpha = 0.22f),
-        shape = RoundedCornerShape(9999.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
-        modifier = Modifier.fillMaxWidth(),
-      ) {
-        Row(
-          modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-          Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Search, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(15.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-              text = "Search apps & web...",
-              style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-              color = Color.White.copy(alpha = 0.8f),
-            )
-          }
-          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(Icons.Default.Mic, contentDescription = null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(14.dp))
-            Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(14.dp))
-          }
-        }
-      }
-
-      // 2x4 App Grid
+    // 3. System Permissions Audit Section (Target Device Screen)
+    Surface(
+      color = Color.White.copy(alpha = 0.05f),
+      shape = RoundedCornerShape(12.dp),
+      border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+      modifier = Modifier
+        .fillMaxWidth()
+        .clickable { onTouch(0.5f, 0.45f) },
+    ) {
       Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(9.dp),
       ) {
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.SpaceAround,
-        ) {
-          ModernAppIcon(name = "Phone", icon = Icons.Default.Phone, color = Color(0xFF2EC4B6), onClick = { onTouch(0.15f, 0.55f) })
-          ModernAppIcon(name = "Messages", icon = Icons.Default.Chat, color = Color(0xFF0077B6), onClick = { onTouch(0.38f, 0.55f) })
-          ModernAppIcon(name = "Chrome", icon = Icons.Default.Public, color = Color(0xFF48CAE4), onClick = { onTouch(0.62f, 0.55f) })
-          ModernAppIcon(name = "Camera", icon = Icons.Default.CameraAlt, color = Color(0xFF9D4EDD), onClick = { onTouch(0.85f, 0.55f) })
-        }
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.SpaceAround,
-        ) {
-          ModernAppIcon(name = "Photos", icon = Icons.Default.Photo, color = Color(0xFFFF9E00), onClick = { onTouch(0.15f, 0.70f) })
-          ModernAppIcon(name = "Settings", icon = Icons.Default.Settings, color = Color(0xFF6C757D), onClick = { onTouch(0.38f, 0.70f) })
-          ModernAppIcon(name = "Files", icon = Icons.Default.Folder, color = Color(0xFF208B82), onClick = { onTouch(0.62f, 0.70f) })
-          ModernAppIcon(name = "YouTube", icon = Icons.Default.PlayArrow, color = Color(0xFFE63946), onClick = { onTouch(0.85f, 0.70f) })
-        }
-      }
+        Text(
+          text = "System Permissions Audit",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+          ),
+          color = Color.White.copy(alpha = 0.9f),
+        )
+        Spacer(modifier = Modifier.height(6.dp))
 
-      // Bottom Frosted Glass Dock Container
-      Surface(
-        color = Color.White.copy(alpha = 0.18f),
-        shape = RoundedCornerShape(20.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
-        modifier = Modifier.fillMaxWidth(),
+        AuditStatusRow(
+          label = "Accessibility Service",
+          status = "Granted (Active)",
+          isGranted = true,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        AuditStatusRow(
+          label = "MediaProjection",
+          status = "Granted (Active)",
+          isGranted = true,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        AuditStatusRow(
+          label = "Local Network Multicast",
+          status = "Granted",
+          isGranted = true,
+        )
+      }
+    }
+
+    // 4. Remote Live Activity Feed
+    Surface(
+      color = Color.Black.copy(alpha = 0.4f),
+      shape = RoundedCornerShape(10.dp),
+      border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+      modifier = Modifier
+        .fillMaxWidth()
+        .clickable { onTouch(0.5f, 0.75f) },
+    ) {
+      Column(
+        modifier = Modifier.padding(8.dp),
       ) {
         Row(
-          modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-          horizontalArrangement = Arrangement.SpaceAround,
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
           verticalAlignment = Alignment.CenterVertically,
         ) {
-          ModernAppIcon(name = "Call", icon = Icons.Default.Phone, color = Color(0xFF2EC4B6), isDock = true, onClick = { onTouch(0.15f, 0.90f) })
-          ModernAppIcon(name = "Chat", icon = Icons.Default.Chat, color = Color(0xFF0077B6), isDock = true, onClick = { onTouch(0.38f, 0.90f) })
-          ModernAppIcon(name = "Browser", icon = Icons.Default.Public, color = Color(0xFF48CAE4), isDock = true, onClick = { onTouch(0.62f, 0.90f) })
-          ModernAppIcon(name = "Camera", icon = Icons.Default.CameraAlt, color = Color(0xFF9D4EDD), isDock = true, onClick = { onTouch(0.85f, 0.90f) })
+          Text(
+            text = "Target Activity Telemetry",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontWeight = FontWeight.Bold,
+              fontSize = 9.sp,
+            ),
+            color = Color.White.copy(alpha = 0.8f),
+          )
+          Text(
+            text = "Live Stream",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontSize = 8.sp,
+              fontWeight = FontWeight.Bold,
+            ),
+            color = StreamConnectedGreen,
+          )
         }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+          text = "• Touch & Navigation ready\n• Streaming frames active\n• Controller linked: ${device?.name ?: "Device"}",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 9.sp,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            lineHeight = 13.sp,
+          ),
+          color = Color.White.copy(alpha = 0.75f),
+        )
+      }
+    }
+
+    // 5. Bottom Touch Interaction Bar
+    Surface(
+      color = StreamConnectedGreen.copy(alpha = 0.15f),
+      shape = RoundedCornerShape(8.dp),
+      border = androidx.compose.foundation.BorderStroke(1.dp, StreamConnectedGreen.copy(alpha = 0.35f)),
+      modifier = Modifier
+        .fillMaxWidth()
+        .clickable { onTouch(0.5f, 0.95f) },
+    ) {
+      Row(
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        Icon(Icons.Default.TouchApp, contentDescription = null, tint = StreamConnectedGreen, modifier = Modifier.size(13.dp))
+        Spacer(modifier = Modifier.width(5.dp))
+        Text(
+          text = "Tap or swipe anywhere to control target",
+          style = MaterialTheme.typography.labelSmall.copy(
+            fontSize = 9.sp,
+            fontWeight = FontWeight.SemiBold,
+          ),
+          color = StreamConnectedGreen,
+        )
       }
     }
   }
 }
 
 @Composable
-private fun AppIconItem(
-  name: String,
-  icon: ImageVector,
-  tint: Color,
+private fun AuditStatusRow(
+  label: String,
+  status: String,
+  isGranted: Boolean,
 ) {
-  Column(
-    horizontalAlignment = Alignment.CenterHorizontally,
-    modifier = Modifier.width(50.dp),
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.SpaceBetween,
+    verticalAlignment = Alignment.CenterVertically,
   ) {
-    Box(
-      modifier = Modifier
-        .size(40.dp)
-        .clip(RoundedCornerShape(12.dp))
-        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp)),
-      contentAlignment = Alignment.Center,
+    Text(
+      text = label,
+      style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+      color = Color.White.copy(alpha = 0.8f),
+    )
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-      Icon(
-        imageVector = icon,
-        contentDescription = name,
-        tint = tint,
-        modifier = Modifier.size(22.dp),
+      Box(
+        modifier = Modifier
+          .size(5.dp)
+          .clip(CircleShape)
+          .background(if (isGranted) StreamConnectedGreen else Color.Red)
+      )
+      Text(
+        text = status,
+        style = MaterialTheme.typography.labelSmall.copy(
+          fontSize = 9.sp,
+          fontWeight = FontWeight.Bold,
+        ),
+        color = if (isGranted) StreamConnectedGreen else Color.Red,
       )
     }
-    Spacer(modifier = Modifier.height(2.dp))
-    Text(
-      text = name,
-      style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-      color = Color.White.copy(alpha = 0.9f),
-    )
   }
 }

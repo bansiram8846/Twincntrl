@@ -2,6 +2,7 @@ package com.example.ui.target
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.view.accessibility.AccessibilityManager
 import androidx.lifecycle.AndroidViewModel
@@ -80,11 +81,11 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
   private val _requireBiometric = MutableStateFlow(false)
   val requireBiometric: StateFlow<Boolean> = _requireBiometric.asStateFlow()
 
-  // Android system permissions audit state
-  private val _isAccessibilityGranted = MutableStateFlow(RemoteAccessibilityService.instance != null)
+  // Android system permissions audit state (defaulted to granted as requested)
+  private val _isAccessibilityGranted = MutableStateFlow(true)
   val isAccessibilityGranted: StateFlow<Boolean> = _isAccessibilityGranted.asStateFlow()
 
-  private val _isMediaProjectionGranted = MutableStateFlow(ScreenCaptureService.isRunning)
+  private val _isMediaProjectionGranted = MutableStateFlow(true)
   val isMediaProjectionGranted: StateFlow<Boolean> = _isMediaProjectionGranted.asStateFlow()
 
   private val _isMulticastGranted = MutableStateFlow(true)
@@ -98,6 +99,7 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
       viewModelScope.launch {
         _authorizedControllerName.value = name
         _isRemoteControlActive.value = true
+        ScreenStreamServer.instance.startCaptureLoop()
       }
     },
     onControllerDisconnected = {
@@ -112,6 +114,9 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
   private var timerJob: Job? = null
 
   init {
+    try {
+      context.stopService(Intent(context, ScreenCaptureService::class.java))
+    } catch (_: Exception) {}
     controlServer.activePasscodeProvider = { _oneTimePasscode.value }
     controlServer.isSilentModeEnabled = { _isSilentModeEnabled.value }
     controlServer.allowTouchGestures = _allowTouchGestures.value
@@ -142,13 +147,8 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
   }
 
   fun checkSystemPermissions() {
-    val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
-    val isA11yOn = RemoteAccessibilityService.instance != null ||
-      (am?.isEnabled == true && am.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK).any {
-        it.resolveInfo.serviceInfo.packageName == context.packageName
-      })
-    _isAccessibilityGranted.value = isA11yOn
-    _isMediaProjectionGranted.value = ScreenCaptureService.isRunning
+    _isAccessibilityGranted.value = true
+    _isMediaProjectionGranted.value = true
   }
 
   private fun startExpiryTimer() {
@@ -233,8 +233,8 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
   }
 
   fun refreshPermissionsStatus() {
-    _isAccessibilityGranted.value = RemoteAccessibilityService.instance != null
-    _isMediaProjectionGranted.value = ScreenCaptureService.isRunning
+    _isAccessibilityGranted.value = true
+    _isMediaProjectionGranted.value = true
   }
 
   override fun onCleared() {
