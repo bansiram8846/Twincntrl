@@ -22,8 +22,11 @@ import com.example.util.QrPairingData
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -105,6 +108,17 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
 
   private val discoveryManager = DiscoveryManager(context)
   val nearbyDevices: StateFlow<List<DeviceInfo>> = discoveryManager.discoveredDevices
+    .combine(effectiveDeviceName) { list, effectiveName ->
+      val allLocalIps = LocalDeviceManager.getAllLocalIpAddresses()
+      val defaultName = thisDeviceName
+      list.filter { dev ->
+        !allLocalIps.contains(dev.ipAddress) &&
+        !dev.name.equals(effectiveName, ignoreCase = true) &&
+        !dev.name.equals(defaultName, ignoreCase = true) &&
+        !dev.id.contains(localIpAddress.replace(".", "-"))
+      }
+    }
+    .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
   private val _recentDevices = MutableStateFlow<List<DeviceInfo>>(emptyList())
   val recentDevices: StateFlow<List<DeviceInfo>> = _recentDevices.asStateFlow()
@@ -444,14 +458,22 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     try {
       val array = JSONArray(jsonStr)
       val list = mutableListOf<DeviceInfo>()
+      val allLocalIps = LocalDeviceManager.getAllLocalIpAddresses()
+      val myName = effectiveDeviceName.value
+      val defaultName = thisDeviceName
       for (i in 0 until array.length()) {
         val obj = array.getJSONObject(i)
+        val ip = obj.getString("ipAddress")
+        val devName = obj.getString("name")
+        if (allLocalIps.contains(ip) || devName.equals(myName, ignoreCase = true) || devName.equals(defaultName, ignoreCase = true)) {
+          continue
+        }
         list.add(
           DeviceInfo(
             id = obj.getString("id"),
-            name = obj.getString("name"),
+            name = devName,
             model = obj.optString("model", "Android Device"),
-            ipAddress = obj.getString("ipAddress"),
+            ipAddress = ip,
             port = obj.optInt("port", TwinProtocol.CONTROL_PORT),
             isAuthorized = true,
             isConnected = false,

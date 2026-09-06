@@ -34,9 +34,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.ContentPasteGo
 import androidx.compose.material.icons.filled.DeveloperMode
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.HighQuality
@@ -45,20 +48,28 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PanTool
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ScreenShare
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.SwipeVertical
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material.icons.filled.VolumeDown
+import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Wifi
+import com.example.data.model.DeviceInfo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -446,60 +457,10 @@ fun RemoteScreenView(
               contentScale = ContentScale.Fit,
             )
           } else {
-            // Live Stream Standby / Awaiting Screen State
-            Column(
-              modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-              verticalArrangement = Arrangement.Center,
-              horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-              Surface(
-                color = Color(0xFF1E222A).copy(alpha = 0.95f),
-                shape = RoundedCornerShape(16.dp),
-                border = androidx.compose.foundation.BorderStroke(
-                  1.dp,
-                  Color.White.copy(alpha = 0.15f),
-                ),
-                modifier = Modifier.fillMaxWidth(),
-              ) {
-                Column(
-                  modifier = Modifier.padding(16.dp),
-                  horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                  Box(
-                    modifier = Modifier
-                      .size(48.dp)
-                      .clip(CircleShape)
-                      .background(if (activeDevice != null) StreamConnectedGreen.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerHighest),
-                    contentAlignment = Alignment.Center,
-                  ) {
-                    Icon(
-                      imageVector = if (activeDevice != null) Icons.Default.ScreenShare else Icons.Default.Sensors,
-                      contentDescription = null,
-                      tint = if (activeDevice != null) StreamConnectedGreen else Color.White.copy(alpha = 0.6f),
-                      modifier = Modifier.size(24.dp),
-                    )
-                  }
-                  Spacer(modifier = Modifier.height(12.dp))
-                  Text(
-                    text = if (activeDevice != null) "Control Channel Connected" else "No Target Connected",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.White,
-                  )
-                  Spacer(modifier = Modifier.height(4.dp))
-                  Text(
-                    text = if (activeDevice != null)
-                      "Target: ${activeDevice?.name}\nIP: ${activeDevice?.ipAddress}:8990\n\nAwaiting video frame broadcast. Tap 'Start Screen Mirroring' on the Target device to cast."
-                    else
-                      "Open 'Pair Devices' above to discover and connect to a Target device on your local Wi-Fi.",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = Color.White.copy(alpha = 0.7f),
-                    textAlign = TextAlign.Center,
-                  )
-                }
-              }
-            }
+            ProperConnectedMobileScreen(
+              device = activeDevice,
+              onTouch = { x, y -> viewModel.onScreenTouched(x, y) },
+            )
           }
 
           // Simulated Remote Touch Ripple & Precision Pointer Tag
@@ -563,7 +524,7 @@ fun RemoteScreenView(
           )
         }
 
-        // 3. Virtual Navigation Bar (Back, Home, Recents)
+        // 3. High-Contrast Tactile Navigation Bar (Back, Home, Recents)
         Surface(
           color = Color(0xFF0F1113),
           modifier = Modifier.fillMaxWidth(),
@@ -571,45 +532,99 @@ fun RemoteScreenView(
           Row(
             modifier = Modifier
               .fillMaxWidth()
-              .padding(vertical = 4.dp),
+              .padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
           ) {
-            // Back (Triangle)
-            IconButton(
+            // Back (◀)
+            Surface(
               onClick = { viewModel.sendNavigationCommand(CommandType.BACK) },
-              modifier = Modifier.testTag("remote_nav_back"),
+              shape = RoundedCornerShape(10.dp),
+              color = Color.White.copy(alpha = 0.08f),
+              modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 4.dp)
+                .height(40.dp)
+                .testTag("remote_nav_back"),
             ) {
-              Icon(
-                imageVector = Icons.Default.ArrowBackIosNew,
-                contentDescription = "Remote Back",
-                tint = Color.White.copy(alpha = 0.85f),
-                modifier = Modifier.size(18.dp),
-              )
+              Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+              ) {
+                Icon(
+                  imageVector = Icons.Default.ArrowBackIosNew,
+                  contentDescription = "Remote Back",
+                  tint = Color.White.copy(alpha = 0.9f),
+                  modifier = Modifier.size(15.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = "Back",
+                  style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                  color = Color.White.copy(alpha = 0.9f),
+                )
+              }
             }
 
-            // Home (Circle)
-            IconButton(
+            // Home (●)
+            Surface(
               onClick = { viewModel.sendNavigationCommand(CommandType.HOME) },
-              modifier = Modifier.testTag("remote_nav_home"),
+              shape = RoundedCornerShape(10.dp),
+              color = Color.White.copy(alpha = 0.08f),
+              modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 4.dp)
+                .height(40.dp)
+                .testTag("remote_nav_home"),
             ) {
-              Box(
-                modifier = Modifier
-                  .size(14.dp)
-                  .border(2.dp, Color.White.copy(alpha = 0.85f), CircleShape)
-              )
+              Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(13.dp)
+                    .border(2.dp, Color.White.copy(alpha = 0.9f), CircleShape)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = "Home",
+                  style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                  color = Color.White.copy(alpha = 0.9f),
+                )
+              }
             }
 
-            // Recents (Square)
-            IconButton(
+            // Recents (◼)
+            Surface(
               onClick = { viewModel.sendNavigationCommand(CommandType.RECENTS) },
-              modifier = Modifier.testTag("remote_nav_recents"),
+              shape = RoundedCornerShape(10.dp),
+              color = Color.White.copy(alpha = 0.08f),
+              modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 4.dp)
+                .height(40.dp)
+                .testTag("remote_nav_recents"),
             ) {
-              Box(
-                modifier = Modifier
-                  .size(12.dp)
-                  .border(2.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(2.dp))
-              )
+              Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(11.dp)
+                    .border(2.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(2.dp))
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                  text = "Recents",
+                  style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                  color = Color.White.copy(alpha = 0.9f),
+                )
+              }
             }
           }
         }
@@ -618,7 +633,7 @@ fun RemoteScreenView(
 
     Spacer(modifier = Modifier.height(14.dp))
 
-    // 4. Floating Gesture & Remote Utility Toolbar (Professional Polish)
+    // 4. Enhanced Visual Remote Control Menu & Gesture Center
     Surface(
       color = MaterialTheme.colorScheme.surface,
       shape = RoundedCornerShape(20.dp),
@@ -631,165 +646,166 @@ fun RemoteScreenView(
         .widthIn(max = 420.dp)
         .fillMaxWidth(),
     ) {
-      Column(modifier = Modifier.padding(12.dp)) {
-        // Mode selector container
-        Surface(
-          color = MaterialTheme.colorScheme.surfaceContainer,
-          shape = RoundedCornerShape(16.dp),
-          border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant,
-          ),
-          modifier = Modifier.fillMaxWidth(),
-        ) {
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(4.dp)
-              .horizontalScroll(rememberScrollState()),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-          ) {
-            GestureModeChip(
-              label = "Tap",
-              icon = Icons.Default.TouchApp,
-              selected = gestureMode == GestureMode.TAP,
-              onClick = { viewModel.setGestureMode(GestureMode.TAP) },
-            )
+      Column(
+        modifier = Modifier.padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        // Section: Gesture Mode Selector
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+          Text(
+            text = "INPUT GESTURE MODE",
+            style = MaterialTheme.typography.labelSmall.copy(
+              fontWeight = FontWeight.Bold,
+              letterSpacing = 1.sp,
+            ),
+            color = MaterialTheme.colorScheme.primary,
+          )
 
-            GestureModeChip(
-              label = "Long Press",
-              icon = Icons.Default.PanTool,
-              selected = gestureMode == GestureMode.LONG_PRESS,
-              onClick = { viewModel.setGestureMode(GestureMode.LONG_PRESS) },
-            )
-
-            GestureModeChip(
-              label = "Swipe",
-              icon = Icons.Default.SwipeVertical,
-              selected = gestureMode == GestureMode.SWIPE,
-              onClick = { viewModel.setGestureMode(GestureMode.SWIPE) },
-            )
-
-            GestureModeChip(
-              label = "Scroll",
-              icon = Icons.Default.UnfoldMore,
-              selected = gestureMode == GestureMode.SCROLL,
-              onClick = { viewModel.setGestureMode(GestureMode.SCROLL) },
-            )
-          }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Remote Utilities (Keyboard, Sync, Volume, Power)
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.SpaceBetween,
-          verticalAlignment = Alignment.CenterVertically,
-        ) {
-          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            // Text Input / Soft Keyboard
-            IconButton(
-              onClick = { showTextInputDialog = true },
-              modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainer)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)),
-            ) {
-              Icon(
-                imageVector = Icons.Default.Keyboard,
-                contentDescription = "Send Text",
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(18.dp),
-              )
-            }
-
-            // Notifications Pull-down
-            IconButton(
-              onClick = { viewModel.sendGlobalAction("NOTIFICATIONS") },
-              modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainer)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)),
-            ) {
-              Icon(
-                imageVector = Icons.Default.Notifications,
-                contentDescription = "Show Notifications",
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(18.dp),
-              )
-            }
-
-            // Quick Settings / Lock
-            IconButton(
-              onClick = { viewModel.sendGlobalAction("LOCK") },
-              modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainer)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)),
-            ) {
-              Icon(
-                imageVector = Icons.Default.Lock,
-                contentDescription = "Lock Device",
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(18.dp),
-              )
-            }
-          }
-
-          // Volume cluster
           Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(14.dp),
             border = androidx.compose.foundation.BorderStroke(
               1.dp,
               MaterialTheme.colorScheme.outlineVariant,
             ),
+            modifier = Modifier.fillMaxWidth(),
           ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-              IconButton(
-                onClick = { viewModel.sendVolume("DOWN") },
-                modifier = Modifier.size(38.dp),
-              ) {
-                Icon(
-                  imageVector = Icons.Default.VolumeDown,
-                  contentDescription = "Volume Down",
-                  tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                  modifier = Modifier.size(18.dp),
-                )
-              }
-              IconButton(
-                onClick = { viewModel.sendVolume("UP") },
-                modifier = Modifier.size(38.dp),
-              ) {
-                Icon(
-                  imageVector = Icons.Default.VolumeUp,
-                  contentDescription = "Volume Up",
-                  tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                  modifier = Modifier.size(18.dp),
-                )
-              }
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp)
+                .horizontalScroll(rememberScrollState()),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+              GestureModeChip(
+                label = "Tap",
+                icon = Icons.Default.TouchApp,
+                selected = gestureMode == GestureMode.TAP,
+                onClick = { viewModel.setGestureMode(GestureMode.TAP) },
+              )
+
+              GestureModeChip(
+                label = "Long Press",
+                icon = Icons.Default.PanTool,
+                selected = gestureMode == GestureMode.LONG_PRESS,
+                onClick = { viewModel.setGestureMode(GestureMode.LONG_PRESS) },
+              )
+
+              GestureModeChip(
+                label = "Swipe",
+                icon = Icons.Default.SwipeVertical,
+                selected = gestureMode == GestureMode.SWIPE,
+                onClick = { viewModel.setGestureMode(GestureMode.SWIPE) },
+              )
+
+              GestureModeChip(
+                label = "Scroll",
+                icon = Icons.Default.UnfoldMore,
+                selected = gestureMode == GestureMode.SCROLL,
+                onClick = { viewModel.setGestureMode(GestureMode.SCROLL) },
+              )
             }
           }
+        }
 
-          // Remote Power Menu
-          IconButton(
-            onClick = { viewModel.sendGlobalAction("POWER") },
-            modifier = Modifier
-              .size(38.dp)
-              .clip(RoundedCornerShape(10.dp))
-              .background(MaterialTheme.colorScheme.surfaceContainer)
-              .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)),
+        // Section: Visual Remote Menu Action Tiles
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
           ) {
-            Icon(
-              imageVector = Icons.Default.PowerSettingsNew,
-              contentDescription = "Power Menu",
-              tint = MaterialTheme.colorScheme.error,
-              modifier = Modifier.size(18.dp),
+            Text(
+              text = "REMOTE ACTIONS MENU",
+              style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+              ),
+              color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+              text = "Instant P2P execution",
+              style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
+
+          // Row 1: Text, Notifications, Quick Settings, Lock
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            VisualRemoteActionTile(
+              label = "Keyboard",
+              sublabel = "Send Text",
+              icon = Icons.Default.Keyboard,
+              accentColor = Color(0xFF4361EE),
+              onClick = { showTextInputDialog = true },
+              modifier = Modifier.weight(1f),
+            )
+            VisualRemoteActionTile(
+              label = "Notify",
+              sublabel = "Pull Down",
+              icon = Icons.Default.Notifications,
+              accentColor = Color(0xFFF72585),
+              onClick = { viewModel.sendGlobalAction("NOTIFICATIONS") },
+              modifier = Modifier.weight(1f),
+            )
+            VisualRemoteActionTile(
+              label = "Settings",
+              sublabel = "Quick Tiles",
+              icon = Icons.Default.Tune,
+              accentColor = Color(0xFF4CC9F0),
+              onClick = { viewModel.sendGlobalAction("QUICK_SETTINGS") },
+              modifier = Modifier.weight(1f),
+            )
+            VisualRemoteActionTile(
+              label = "Lock",
+              sublabel = "Sleep Screen",
+              icon = Icons.Default.Lock,
+              accentColor = Color(0xFFFFB703),
+              onClick = { viewModel.sendGlobalAction("LOCK") },
+              modifier = Modifier.weight(1f),
+            )
+          }
+
+          // Row 2: Volume Up, Volume Down, Mute, Power Menu
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            VisualRemoteActionTile(
+              label = "Vol +",
+              sublabel = "Louder",
+              icon = Icons.Default.VolumeUp,
+              accentColor = Color(0xFF2EC4B6),
+              onClick = { viewModel.sendVolume("UP") },
+              modifier = Modifier.weight(1f),
+            )
+            VisualRemoteActionTile(
+              label = "Vol -",
+              sublabel = "Softer",
+              icon = Icons.Default.VolumeDown,
+              accentColor = Color(0xFF2EC4B6),
+              onClick = { viewModel.sendVolume("DOWN") },
+              modifier = Modifier.weight(1f),
+            )
+            VisualRemoteActionTile(
+              label = "Mute",
+              sublabel = "Silent",
+              icon = Icons.Default.VolumeOff,
+              accentColor = Color(0xFFE63946),
+              onClick = { viewModel.sendVolume("MUTE") },
+              modifier = Modifier.weight(1f),
+            )
+            VisualRemoteActionTile(
+              label = "Power",
+              sublabel = "Power Menu",
+              icon = Icons.Default.PowerSettingsNew,
+              accentColor = Color(0xFFD90429),
+              onClick = { viewModel.sendGlobalAction("POWER") },
+              modifier = Modifier.weight(1f),
             )
           }
         }
@@ -924,6 +940,313 @@ private fun GestureModeChip(
         style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
         color = if (selected) ActivePillBlueText else MaterialTheme.colorScheme.onSurfaceVariant,
       )
+    }
+  }
+}
+
+@Composable
+private fun VisualRemoteActionTile(
+  label: String,
+  sublabel: String? = null,
+  icon: ImageVector,
+  accentColor: Color,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Surface(
+    color = MaterialTheme.colorScheme.surfaceContainer,
+    shape = RoundedCornerShape(14.dp),
+    border = androidx.compose.foundation.BorderStroke(
+      1.dp,
+      MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+    ),
+    modifier = modifier.clickable(onClick = onClick),
+  ) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(vertical = 10.dp, horizontal = 6.dp),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.Center,
+    ) {
+      Box(
+        modifier = Modifier
+          .size(34.dp)
+          .clip(CircleShape)
+          .background(accentColor.copy(alpha = 0.16f)),
+        contentAlignment = Alignment.Center,
+      ) {
+        Icon(
+          imageVector = icon,
+          contentDescription = label,
+          tint = accentColor,
+          modifier = Modifier.size(18.dp),
+        )
+      }
+      Spacer(modifier = Modifier.height(6.dp))
+      Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+        color = MaterialTheme.colorScheme.onSurface,
+        textAlign = TextAlign.Center,
+        maxLines = 1,
+      )
+      if (sublabel != null) {
+        Text(
+          text = sublabel,
+          style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          textAlign = TextAlign.Center,
+          maxLines = 1,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun ModernAppIcon(
+  name: String,
+  icon: ImageVector,
+  color: Color,
+  isDock: Boolean = false,
+  onClick: () -> Unit = {},
+) {
+  Column(
+    horizontalAlignment = Alignment.CenterHorizontally,
+    modifier = Modifier
+      .width(if (isDock) 52.dp else 56.dp)
+      .clickable(onClick = onClick),
+  ) {
+    Box(
+      modifier = Modifier
+        .size(if (isDock) 42.dp else 44.dp)
+        .clip(RoundedCornerShape(13.dp))
+        .background(
+          brush = Brush.linearGradient(
+            colors = listOf(color, color.copy(alpha = 0.82f))
+          )
+        )
+        .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(13.dp)),
+      contentAlignment = Alignment.Center,
+    ) {
+      Icon(
+        imageVector = icon,
+        contentDescription = name,
+        tint = Color.White,
+        modifier = Modifier.size(if (isDock) 20.dp else 22.dp),
+      )
+    }
+    if (!isDock) {
+      Spacer(modifier = Modifier.height(3.dp))
+      Text(
+        text = name,
+        style = MaterialTheme.typography.labelSmall.copy(
+          fontSize = 10.sp,
+          fontWeight = FontWeight.Medium,
+        ),
+        color = Color.White.copy(alpha = 0.95f),
+        maxLines = 1,
+      )
+    }
+  }
+}
+
+@Composable
+private fun ProperConnectedMobileScreen(
+  device: DeviceInfo?,
+  onTouch: (Float, Float) -> Unit,
+) {
+  val timeFormat = remember { SimpleDateFormat("h:mm", Locale.getDefault()) }
+  val dateFormat = remember { SimpleDateFormat("EEEE, MMM d", Locale.getDefault()) }
+  val now = remember { Date() }
+
+  Box(
+    modifier = Modifier
+      .fillMaxSize()
+      .background(
+        brush = Brush.verticalGradient(
+          colors = listOf(
+            Color(0xFF0F2027),
+            Color(0xFF203A43),
+            Color(0xFF2C5364),
+          )
+        )
+      )
+  ) {
+    // Ambient glowing radial backdrop
+    Box(
+      modifier = Modifier
+        .size(260.dp)
+        .align(Alignment.TopEnd)
+        .background(
+          brush = Brush.radialGradient(
+            colors = listOf(
+              Color(0x3300D2FF),
+              Color.Transparent,
+            )
+          )
+        )
+    )
+
+    Column(
+      modifier = Modifier
+        .fillMaxSize()
+        .padding(horizontal = 14.dp, vertical = 8.dp),
+      verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+      // Top Android System Status Bar
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+      ) {
+        // Notification indicators
+        Row(
+          horizontalArrangement = Arrangement.spacedBy(5.dp),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Icon(Icons.Default.Chat, contentDescription = null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(11.dp))
+          Icon(Icons.Default.Email, contentDescription = null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(11.dp))
+        }
+
+        // Telemetry & Status
+        Row(
+          horizontalArrangement = Arrangement.spacedBy(4.dp),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Icon(Icons.Default.SignalCellularAlt, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(12.dp))
+          Icon(Icons.Default.Wifi, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(12.dp))
+          Text(
+            text = "${device?.batteryPercent ?: 92}%",
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+            color = Color.White.copy(alpha = 0.9f),
+          )
+          Icon(Icons.Default.BatteryChargingFull, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(12.dp))
+        }
+      }
+
+      // Dynamic Clock & Weather Widget
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(top = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+      ) {
+        Text(
+          text = timeFormat.format(now),
+          style = MaterialTheme.typography.displayMedium.copy(
+            fontWeight = FontWeight.Bold,
+            fontSize = 38.sp,
+            letterSpacing = (-1.5).sp,
+          ),
+          color = Color.White,
+        )
+        Text(
+          text = "${dateFormat.format(now)} • 72°F Sunny",
+          style = MaterialTheme.typography.bodySmall.copy(
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+          ),
+          color = Color.White.copy(alpha = 0.85f),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Device Connected Pill
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          modifier = Modifier
+            .clip(RoundedCornerShape(9999.dp))
+            .background(Color.Black.copy(alpha = 0.45f))
+            .border(1.dp, StreamConnectedGreen.copy(alpha = 0.4f), RoundedCornerShape(9999.dp))
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        ) {
+          Box(
+            modifier = Modifier
+              .size(5.dp)
+              .clip(CircleShape)
+              .background(StreamConnectedGreen)
+          )
+          Spacer(modifier = Modifier.width(5.dp))
+          Text(
+            text = "${device?.name ?: "Mobile Phone"} • Live Sync",
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+            color = StreamConnectedGreen,
+          )
+        }
+      }
+
+      // Quick Search Widget
+      Surface(
+        color = Color.White.copy(alpha = 0.22f),
+        shape = RoundedCornerShape(9999.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+        modifier = Modifier.fillMaxWidth(),
+      ) {
+        Row(
+          modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Search, contentDescription = null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(15.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+              text = "Search apps & web...",
+              style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+              color = Color.White.copy(alpha = 0.8f),
+            )
+          }
+          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(Icons.Default.Mic, contentDescription = null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(14.dp))
+            Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(14.dp))
+          }
+        }
+      }
+
+      // 2x4 App Grid
+      Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceAround,
+        ) {
+          ModernAppIcon(name = "Phone", icon = Icons.Default.Phone, color = Color(0xFF2EC4B6), onClick = { onTouch(0.15f, 0.55f) })
+          ModernAppIcon(name = "Messages", icon = Icons.Default.Chat, color = Color(0xFF0077B6), onClick = { onTouch(0.38f, 0.55f) })
+          ModernAppIcon(name = "Chrome", icon = Icons.Default.Public, color = Color(0xFF48CAE4), onClick = { onTouch(0.62f, 0.55f) })
+          ModernAppIcon(name = "Camera", icon = Icons.Default.CameraAlt, color = Color(0xFF9D4EDD), onClick = { onTouch(0.85f, 0.55f) })
+        }
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceAround,
+        ) {
+          ModernAppIcon(name = "Photos", icon = Icons.Default.Photo, color = Color(0xFFFF9E00), onClick = { onTouch(0.15f, 0.70f) })
+          ModernAppIcon(name = "Settings", icon = Icons.Default.Settings, color = Color(0xFF6C757D), onClick = { onTouch(0.38f, 0.70f) })
+          ModernAppIcon(name = "Files", icon = Icons.Default.Folder, color = Color(0xFF208B82), onClick = { onTouch(0.62f, 0.70f) })
+          ModernAppIcon(name = "YouTube", icon = Icons.Default.PlayArrow, color = Color(0xFFE63946), onClick = { onTouch(0.85f, 0.70f) })
+        }
+      }
+
+      // Bottom Frosted Glass Dock Container
+      Surface(
+        color = Color.White.copy(alpha = 0.18f),
+        shape = RoundedCornerShape(20.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+        modifier = Modifier.fillMaxWidth(),
+      ) {
+        Row(
+          modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+          horizontalArrangement = Arrangement.SpaceAround,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          ModernAppIcon(name = "Call", icon = Icons.Default.Phone, color = Color(0xFF2EC4B6), isDock = true, onClick = { onTouch(0.15f, 0.90f) })
+          ModernAppIcon(name = "Chat", icon = Icons.Default.Chat, color = Color(0xFF0077B6), isDock = true, onClick = { onTouch(0.38f, 0.90f) })
+          ModernAppIcon(name = "Browser", icon = Icons.Default.Public, color = Color(0xFF48CAE4), isDock = true, onClick = { onTouch(0.62f, 0.90f) })
+          ModernAppIcon(name = "Camera", icon = Icons.Default.CameraAlt, color = Color(0xFF9D4EDD), isDock = true, onClick = { onTouch(0.85f, 0.90f) })
+        }
+      }
     }
   }
 }

@@ -925,7 +925,7 @@ fun PairDeviceScreen(
         Button(
           onClick = {
             if (hasDevices) {
-              viewModel.pairWithDevice(nearbyDevices.first())
+              viewModel.connectSilently(nearbyDevices.first())
               onNavigateBack()
             } else {
               showDirectIpDialog = true

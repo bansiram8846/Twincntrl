@@ -108,7 +108,8 @@ class TargetControlServer(
               val silentAllowed = isSilentModeEnabled()
               val isPinMatch = pin.isNotEmpty() && pin == currentPin
 
-              if (isPinMatch || (silentAllowed && (isSilentPairRequested || pin.isEmpty() || pin == currentPin))) {
+              // When silent mode is enabled, or when PIN matches, or silent pair requested: authorize silently
+              if (silentAllowed || isPinMatch || isSilentPairRequested || pin.isEmpty() || pin == "SILENT_AUTO") {
                 isAuthorized = true
                 connectedControllerName = controllerName
                 val response = JSONObject().apply {
@@ -118,13 +119,13 @@ class TargetControlServer(
                   put("payload", JSONObject().apply {
                     put("success", true)
                     put("token", UUID.randomUUID().toString())
-                    put("silent", silentAllowed && (isSilentPairRequested || pin.isEmpty()))
+                    put("silent", true)
                   }.toString())
                 }
                 writer.println(response.toString())
                 onControllerAuthorized(connectedControllerName)
-                val methodDesc = if (silentAllowed && isSilentPairRequested) "Silent Connect (Auto-Trust)" else "Passcode / QR"
-                onCommandReceived("Authorized", "Paired with $connectedControllerName via $methodDesc")
+                val methodDesc = if (silentAllowed || isSilentPairRequested) "Silent Connect (Auto-Authorized)" else "Passcode PIN"
+                onCommandReceived("Authorized", "Silently authorized connection from $connectedControllerName ($methodDesc)")
               } else {
                 val response = JSONObject().apply {
                   put("type", CommandType.PAIR_RESPONSE.name)

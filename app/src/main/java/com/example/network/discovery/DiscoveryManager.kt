@@ -284,6 +284,12 @@ class DiscoveryManager(private val context: Context) {
 
   @Synchronized
   fun addOrUpdateDiscoveredDevice(device: DeviceInfo) {
+    // Filter out self (Device A controller) from discovery
+    if (LocalDeviceManager.isSelfDevice(context, device.ipAddress, device.name, device.id)) {
+      Log.d(TAG, "Excluding local device from discovery list: ${device.name} (${device.ipAddress})")
+      return
+    }
+
     val current = _discoveredDevices.value.toMutableList()
     val existingIndex = current.indexOfFirst { it.ipAddress == device.ipAddress || it.id == device.id }
     if (existingIndex >= 0) {

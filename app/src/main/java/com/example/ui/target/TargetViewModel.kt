@@ -77,7 +77,7 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
   private val _allowAudioStreaming = MutableStateFlow(true)
   val allowAudioStreaming: StateFlow<Boolean> = _allowAudioStreaming.asStateFlow()
 
-  private val _requireBiometric = MutableStateFlow(true)
+  private val _requireBiometric = MutableStateFlow(false)
   val requireBiometric: StateFlow<Boolean> = _requireBiometric.asStateFlow()
 
   // Android system permissions audit state
@@ -226,7 +226,15 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
 
   fun onMediaProjectionStarted() {
     _isMediaProjectionGranted.value = true
-    _isRemoteControlActive.value = true
+  }
+
+  fun onMediaProjectionStopped() {
+    _isMediaProjectionGranted.value = false
+  }
+
+  fun refreshPermissionsStatus() {
+    _isAccessibilityGranted.value = RemoteAccessibilityService.instance != null
+    _isMediaProjectionGranted.value = ScreenCaptureService.isRunning
   }
 
   override fun onCleared() {

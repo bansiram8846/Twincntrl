@@ -605,7 +605,7 @@ fun ControllerHomeScreen(
       recentDevices.drop(1).forEach { device ->
         RecentDeviceCard(
           device = device,
-          onConnectClicked = { viewModel.pairWithDevice(device) },
+          onConnectClicked = { viewModel.connectSilently(device) },
         )
       }
     }

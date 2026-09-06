@@ -58,6 +58,46 @@ object LocalDeviceManager {
     return prefs.getString(KEY_CUSTOM_DEVICE_NAME, null)?.takeIf { it.isNotBlank() }
   }
 
+  fun getAllLocalIpAddresses(): Set<String> {
+    val result = mutableSetOf("127.0.0.1", "0.0.0.0", "localhost")
+    try {
+      val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+      for (intf in interfaces) {
+        val addrs = Collections.list(intf.inetAddresses)
+        for (addr in addrs) {
+          addr.hostAddress?.let { ip ->
+            val cleanIp = ip.substringBefore("%").trim()
+            if (cleanIp.isNotBlank()) {
+              result.add(cleanIp)
+            }
+          }
+        }
+      }
+    } catch (_: Exception) {}
+    return result
+  }
+
+  fun isSelfDevice(context: Context, ipAddress: String, deviceName: String, deviceId: String = ""): Boolean {
+    val allLocalIps = getAllLocalIpAddresses()
+    val cleanIp = ipAddress.substringBefore("%").trim()
+    if (cleanIp.isBlank() || allLocalIps.contains(cleanIp)) return true
+
+    val myName = getDeviceName().trim()
+    val myEffectiveName = getEffectiveDeviceName(context).trim()
+    val targetName = deviceName.trim()
+
+    if (targetName.equals(myName, ignoreCase = true) || targetName.equals(myEffectiveName, ignoreCase = true)) {
+      return true
+    }
+
+    val myIp = getLocalIpAddress(context)
+    if (deviceId.isNotBlank() && deviceId.contains(myIp.replace(".", "-"))) {
+      return true
+    }
+
+    return false
+  }
+
   fun getDeviceModel(): String = Build.MODEL ?: "Android Device"
 
   fun getDeviceManufacturer(): String = Build.MANUFACTURER ?: "Unknown"

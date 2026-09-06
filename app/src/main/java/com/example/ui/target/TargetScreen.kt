@@ -1,7 +1,13 @@
 package com.example.ui.target
 
+import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -67,6 +73,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import com.example.network.protocol.TwinProtocol
+import com.example.service.ScreenCaptureService
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -118,6 +125,31 @@ fun TargetScreen(
   val isSilentMode by viewModel.isSilentModeEnabled.collectAsState()
   val selectedMedium by viewModel.selectedMedium.collectAsState()
   val context = androidx.compose.ui.platform.LocalContext.current
+
+  val mediaProjectionManager = remember {
+    context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+  }
+
+  val mediaProjectionLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.StartActivityForResult(),
+  ) { result ->
+    if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+      val serviceIntent = Intent(context, ScreenCaptureService::class.java).apply {
+        action = ScreenCaptureService.ACTION_START
+        putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+        putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
+      }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(serviceIntent)
+      } else {
+        context.startService(serviceIntent)
+      }
+      viewModel.onMediaProjectionStarted()
+      Toast.makeText(context, "Silent screen broadcast active!", Toast.LENGTH_SHORT).show()
+    } else {
+      Toast.makeText(context, "Screen capture permission not granted", Toast.LENGTH_SHORT).show()
+    }
+  }
 
   var showEnlargedQrDialog by remember { mutableStateOf(false) }
   val clipboardManager = LocalClipboardManager.current
@@ -579,6 +611,91 @@ fun TargetScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 19.sp,
                       )
+                    }
+
+                    // Screen Streaming Cast Service Controller Card
+                    Surface(
+                      color = if (isMediaProjectionGranted) StreamConnectedGreen.copy(alpha = 0.1f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f),
+                      shape = RoundedCornerShape(12.dp),
+                      border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (isMediaProjectionGranted) StreamConnectedGreen.copy(alpha = 0.4f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                      ),
+                      modifier = Modifier.fillMaxWidth(),
+                    ) {
+                      Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                      ) {
+                        Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                          verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                          Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                              modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (isMediaProjectionGranted) StreamConnectedGreen else StreamWarningAmber)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                              text = if (isMediaProjectionGranted) "Screen Stream Broadcast Active" else "Screen Mirroring (One-Time Setup)",
+                              style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                              color = if (isMediaProjectionGranted) StreamConnectedGreen else MaterialTheme.colorScheme.onSurface,
+                            )
+                          }
+                          Text(
+                            text = if (isMediaProjectionGranted) "720p 30FPS" else "Ready",
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                          )
+                        }
+
+                        Text(
+                          text = if (isMediaProjectionGranted) {
+                            "Screen video capture is running silently in the background. Paired controllers receive your live screen instantly without requesting consent each time!"
+                          } else {
+                            "Grant Android screen capture permission once. Once granted, controllers connect and display your screen silently without prompting you!"
+                          },
+                          style = MaterialTheme.typography.bodySmall,
+                          color = MaterialTheme.colorScheme.onSurfaceVariant,
+                          lineHeight = 17.sp,
+                        )
+
+                        if (!isMediaProjectionGranted) {
+                          Button(
+                            onClick = {
+                              mediaProjectionManager?.createScreenCaptureIntent()?.let { intent ->
+                                mediaProjectionLauncher.launch(intent)
+                              } ?: Toast.makeText(context, "Screen capture service unavailable", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(9999.dp),
+                            colors = ButtonDefaults.buttonColors(
+                              containerColor = StreamConnectedGreen,
+                              contentColor = Color.Black,
+                            ),
+                            modifier = Modifier.fillMaxWidth().height(40.dp),
+                          ) {
+                            Icon(imageVector = Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Enable Silent Screen Cast (One-Time)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                          }
+                        } else {
+                          OutlinedButton(
+                            onClick = {
+                              context.stopService(Intent(context, ScreenCaptureService::class.java))
+                              viewModel.onMediaProjectionStopped()
+                              Toast.makeText(context, "Screen streaming paused", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(9999.dp),
+                            modifier = Modifier.fillMaxWidth().height(36.dp),
+                          ) {
+                            Text("Pause Screen Broadcast", style = MaterialTheme.typography.labelSmall)
+                          }
+                        }
+                      }
                     }
                   }
                 }
