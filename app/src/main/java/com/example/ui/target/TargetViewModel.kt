@@ -114,9 +114,6 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
   private var timerJob: Job? = null
 
   init {
-    try {
-      context.stopService(Intent(context, ScreenCaptureService::class.java))
-    } catch (_: Exception) {}
     controlServer.activePasscodeProvider = { _oneTimePasscode.value }
     controlServer.isSilentModeEnabled = { _isSilentModeEnabled.value }
     controlServer.allowTouchGestures = _allowTouchGestures.value
@@ -180,6 +177,10 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
     controlServer.sendDisconnect()
     _isRemoteControlActive.value = false
     _authorizedControllerName.value = "None"
+    try {
+      context.stopService(Intent(context, ScreenCaptureService::class.java))
+      _isMediaProjectionGranted.value = false
+    } catch (_: Exception) {}
   }
 
   fun resumeSharing() {
@@ -239,7 +240,9 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
 
   override fun onCleared() {
     timerJob?.cancel()
-    stopServerInfrastructure()
+    if (!ScreenCaptureService.isRunning) {
+      stopServerInfrastructure()
+    }
     super.onCleared()
   }
 }

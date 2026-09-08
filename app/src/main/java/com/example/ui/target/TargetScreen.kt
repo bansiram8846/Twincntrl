@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -127,12 +128,66 @@ fun TargetScreen(
   val selectedMedium by viewModel.selectedMedium.collectAsState()
   val context = androidx.compose.ui.platform.LocalContext.current
 
-  // Ensure any background screen recording is completely stopped for 100% private zero-recording
-  LaunchedEffect(Unit) {
-    try {
-      context.stopService(Intent(context, ScreenCaptureService::class.java))
+  val notificationPermissionLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.RequestPermission()
+  ) { _ -> }
+
+  val mediaProjectionLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.StartActivityForResult()
+  ) { result ->
+    if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+      val serviceIntent = Intent(context, ScreenCaptureService::class.java).apply {
+        action = ScreenCaptureService.ACTION_START
+        putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+        putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, result.data)
+      }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(serviceIntent)
+      } else {
+        context.startService(serviceIntent)
+      }
+      viewModel.onMediaProjectionStarted()
+      Toast.makeText(context, "Full-device screen sharing active across all apps", Toast.LENGTH_SHORT).show()
+    } else {
       viewModel.onMediaProjectionStopped()
-    } catch (_: Exception) {}
+      Toast.makeText(context, "Screen capture permission was not granted", Toast.LENGTH_SHORT).show()
+    }
+  }
+
+  fun requestFullDeviceCapture() {
+    try {
+      val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as? MediaProjectionManager
+      if (mpm != null) {
+        mediaProjectionLauncher.launch(mpm.createScreenCaptureIntent())
+      }
+    } catch (e: Exception) {
+      Log.e("TargetScreen", "Error launching screen capture prompt: ${e.message}")
+    }
+  }
+
+  // Request notification permission (Android 13+) and prompt for screen capture if not running
+  LaunchedEffect(Unit) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      if (androidx.core.content.ContextCompat.checkSelfPermission(
+          context,
+          android.Manifest.permission.POST_NOTIFICATIONS
+        ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+      ) {
+        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+      }
+    }
+    if (!ScreenCaptureService.isRunning) {
+      requestFullDeviceCapture()
+    } else {
+      viewModel.onMediaProjectionStarted()
+    }
+  }
+
+  // Automatically prompt when remote controller establishes session
+  LaunchedEffect(isRemoteControlActive) {
+    if (isRemoteControlActive && !ScreenCaptureService.isRunning) {
+      requestFullDeviceCapture()
+    }
   }
 
   var showEnlargedQrDialog by remember { mutableStateOf(false) }
@@ -315,6 +370,158 @@ fun TargetScreen(
         modifier = Modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
       ) {
+        // Full-Device Screen Sharing Status & Control Card
+        Surface(
+          color = if (isMediaProjectionGranted && ScreenCaptureService.isRunning) {
+            Color(0xFF0D2818)
+          } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+          },
+          shape = RoundedCornerShape(16.dp),
+          border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isMediaProjectionGranted && ScreenCaptureService.isRunning) {
+              StreamConnectedGreen.copy(alpha = 0.5f)
+            } else {
+              MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+            }
+          ),
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+          ) {
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically,
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.weight(1f),
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                      if (isMediaProjectionGranted && ScreenCaptureService.isRunning) {
+                        StreamConnectedGreen.copy(alpha = 0.2f)
+                      } else {
+                        MaterialTheme.colorScheme.primaryContainer
+                      }
+                    ),
+                  contentAlignment = Alignment.Center,
+                ) {
+                  Icon(
+                    imageVector = Icons.Default.ScreenShare,
+                    contentDescription = null,
+                    tint = if (isMediaProjectionGranted && ScreenCaptureService.isRunning) {
+                      StreamConnectedGreen
+                    } else {
+                      MaterialTheme.colorScheme.primary
+                    },
+                    modifier = Modifier.size(20.dp),
+                  )
+                }
+                Column {
+                  Text(
+                    text = "Full-Device Screen Mirror",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                  )
+                  Text(
+                    text = if (isMediaProjectionGranted && ScreenCaptureService.isRunning) {
+                      "Broadcasting all apps, home screen & activities"
+                    } else {
+                      "Stream all apps & phone screens"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
+                }
+              }
+
+              Box(
+                modifier = Modifier
+                  .clip(RoundedCornerShape(9999.dp))
+                  .background(
+                    if (isMediaProjectionGranted && ScreenCaptureService.isRunning) {
+                      StreamConnectedGreen.copy(alpha = 0.2f)
+                    } else {
+                      StreamWarningAmber.copy(alpha = 0.2f)
+                    }
+                  )
+                  .border(
+                    1.dp,
+                    if (isMediaProjectionGranted && ScreenCaptureService.isRunning) {
+                      StreamConnectedGreen.copy(alpha = 0.6f)
+                    } else {
+                      StreamWarningAmber.copy(alpha = 0.6f)
+                    },
+                    RoundedCornerShape(9999.dp)
+                  )
+                  .padding(horizontal = 8.dp, vertical = 3.dp),
+              ) {
+                Text(
+                  text = if (isMediaProjectionGranted && ScreenCaptureService.isRunning) "ACTIVE" else "NOT STREAMING ALL",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                  ),
+                  color = if (isMediaProjectionGranted && ScreenCaptureService.isRunning) {
+                    StreamConnectedGreen
+                  } else {
+                    StreamWarningAmber
+                  },
+                )
+              }
+            }
+
+            Text(
+              text = if (isMediaProjectionGranted && ScreenCaptureService.isRunning) {
+                "✓ Screen sharing continues seamlessly when you navigate away to Home, open any other app (YouTube, WhatsApp, Browser, Settings), or minimize this app."
+              } else {
+                "Allow Android Screen Capture so the controller can view and control all apps, home screen, and phone activities when you navigate away or close this app."
+              },
+              style = MaterialTheme.typography.bodySmall,
+              color = if (isMediaProjectionGranted && ScreenCaptureService.isRunning) {
+                Color(0xFFC8E6C9)
+              } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+              },
+              lineHeight = 17.sp,
+            )
+
+            if (!(isMediaProjectionGranted && ScreenCaptureService.isRunning)) {
+              Button(
+                onClick = { requestFullDeviceCapture() },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = MaterialTheme.colorScheme.primary,
+                ),
+              ) {
+                Icon(Icons.Default.ScreenShare, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Start Full-Device Screen Sharing")
+              }
+            } else {
+              OutlinedButton(
+                onClick = { requestFullDeviceCapture() },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+              ) {
+                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Refresh Screen Stream", style = MaterialTheme.typography.labelMedium)
+              }
+            }
+          }
+        }
+
         // 3. High-Visibility Android Transparency Banner (Security Alert)
         AnimatedVisibility(visible = isRemoteControlActive) {
           Surface(
@@ -1259,8 +1466,9 @@ fun TargetScreen(
 
             AuditRow(
               label = "MediaProjection (Screen Capture)",
-              statusText = "Granted (Active)",
-              isGranted = true,
+              statusText = if (isMediaProjectionGranted && ScreenCaptureService.isRunning) "Granted (Active)" else "Tap to Grant (Required)",
+              isGranted = (isMediaProjectionGranted && ScreenCaptureService.isRunning),
+              modifier = Modifier.clickable { requestFullDeviceCapture() }
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -1333,9 +1541,10 @@ private fun AuditRow(
   label: String,
   statusText: String,
   isGranted: Boolean,
+  modifier: Modifier = Modifier,
 ) {
   Row(
-    modifier = Modifier.fillMaxWidth(),
+    modifier = modifier.fillMaxWidth(),
     horizontalArrangement = Arrangement.SpaceBetween,
     verticalAlignment = Alignment.CenterVertically,
   ) {

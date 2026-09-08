@@ -8,6 +8,7 @@ import com.example.data.model.DeviceInfo
 import com.example.network.LocalDeviceManager
 import com.example.network.protocol.PeerBeacon
 import com.example.network.protocol.TwinProtocol
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -119,8 +120,11 @@ class DiscoveryManager(private val context: Context) {
 
           delay(2500)
         }
+      } catch (e: CancellationException) {
+        // Normal cancellation when advertising is stopped
+        throw e
       } catch (e: Exception) {
-        Log.e(TAG, "UDP broadcast beacon error: ${e.message}")
+        if (isActive) Log.e(TAG, "UDP broadcast beacon error: ${e.message}")
       } finally {
         socket?.close()
       }
@@ -215,6 +219,8 @@ class DiscoveryManager(private val context: Context) {
             )
           }
         }
+      } catch (e: CancellationException) {
+        throw e
       } catch (e: Exception) {
         if (isActive) Log.d(TAG, "UDP listener finished: ${e.message}")
       } finally {

@@ -18,10 +18,12 @@ import android.media.projection.MediaProjectionManager
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.example.MainActivity
 import com.example.R
 import com.example.network.server.ScreenStreamServer
 import java.io.ByteArrayOutputStream
@@ -47,6 +49,7 @@ class ScreenCaptureService : Service() {
   private var mediaProjection: MediaProjection? = null
   private var virtualDisplay: VirtualDisplay? = null
   private var imageReader: ImageReader? = null
+  private var handlerThread: HandlerThread? = null
   private var captureHandler: Handler? = null
   private var lastFrameTimestamp = 0L
 
@@ -59,7 +62,9 @@ class ScreenCaptureService : Service() {
   override fun onCreate() {
     super.onCreate()
     createNotificationChannel()
-    captureHandler = Handler(Looper.getMainLooper())
+    val thread = HandlerThread("ScreenCaptureThread").apply { start() }
+    handlerThread = thread
+    captureHandler = Handler(thread.looper)
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -88,6 +93,7 @@ class ScreenCaptureService : Service() {
         }
 
         if (resultCode == Activity.RESULT_OK && data != null) {
+          ScreenStreamServer.instance.start()
           startMediaProjection(resultCode, data)
         } else {
           Log.w(TAG, "Media projection permission not provided or canceled")
@@ -109,6 +115,8 @@ class ScreenCaptureService : Service() {
 
   private fun startMediaProjection(resultCode: Int, data: Intent) {
     try {
+      stopCapture()
+
       val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
       val projection = mpm.getMediaProjection(resultCode, data) ?: return
       mediaProjection = projection
@@ -124,9 +132,13 @@ class ScreenCaptureService : Service() {
       val screenHeight = metrics.heightPixels
       val density = metrics.densityDpi
 
-      // Target 720p scaling for optimal balance of frame rate and local latency
-      val targetWidth = 720
-      val targetHeight = ((screenHeight.toFloat() / screenWidth.toFloat()) * targetWidth).toInt().coerceAtLeast(1280)
+      val isLandscape = screenWidth > screenHeight
+      val targetWidth = if (isLandscape) 1280 else 720
+      val targetHeight = if (isLandscape) {
+        ((screenHeight.toFloat() / screenWidth.toFloat()) * 1280).toInt().coerceAtLeast(720)
+      } else {
+        ((screenHeight.toFloat() / screenWidth.toFloat()) * 720).toInt().coerceAtLeast(1280)
+      }
 
       val reader = ImageReader.newInstance(targetWidth, targetHeight, PixelFormat.RGBA_8888, 2)
       imageReader = reader
@@ -147,7 +159,7 @@ class ScreenCaptureService : Service() {
       )
 
       isRunning = true
-      Log.i(TAG, "Screen capture active: ${targetWidth}x${targetHeight}")
+      Log.i(TAG, "Full-device screen capture active: ${targetWidth}x${targetHeight}")
     } catch (e: Exception) {
       Log.e(TAG, "Failed to start MediaProjection virtual display: ${e.message}")
     }
@@ -159,25 +171,25 @@ class ScreenCaptureService : Service() {
       val now = System.currentTimeMillis()
       // Limit to ~30 FPS to avoid saturating network buffer
       if (now - lastFrameTimestamp < 33) {
-        image.close()
         return
       }
       lastFrameTimestamp = now
 
       val planes = image.planes
+      if (planes.isEmpty()) return
       val buffer: ByteBuffer = planes[0].buffer
       val pixelStride = planes[0].pixelStride
       val rowStride = planes[0].rowStride
-      val rowPadding = rowStride - pixelStride * width
+      val pixelWidth = rowStride / pixelStride
 
       val bitmap = Bitmap.createBitmap(
-        width + rowPadding / pixelStride,
+        pixelWidth,
         height,
         Bitmap.Config.ARGB_8888
       )
       bitmap.copyPixelsFromBuffer(buffer)
 
-      val croppedBitmap = if (rowPadding > 0) {
+      val croppedBitmap = if (pixelWidth > width) {
         Bitmap.createBitmap(bitmap, 0, 0, width, height)
       } else {
         bitmap
@@ -218,8 +230,15 @@ class ScreenCaptureService : Service() {
     } catch (_: Exception) {}
   }
 
+  override fun onTaskRemoved(rootIntent: Intent?) {
+    super.onTaskRemoved(rootIntent)
+    Log.i(TAG, "App task closed/swiped away, ScreenCaptureService continues broadcasting in foreground")
+  }
+
   override fun onDestroy() {
     stopCapture()
+    handlerThread?.quitSafely()
+    handlerThread = null
     super.onDestroy()
   }
 
@@ -231,6 +250,7 @@ class ScreenCaptureService : Service() {
         NotificationManager.IMPORTANCE_LOW,
       ).apply {
         description = "Notifies when screen capture and remote control are active"
+        setShowBadge(false)
       }
       val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
       manager.createNotificationChannel(channel)
@@ -238,10 +258,24 @@ class ScreenCaptureService : Service() {
   }
 
   private fun buildForegroundNotification(): Notification {
+    val pendingIntent = android.app.PendingIntent.getActivity(
+      this,
+      0,
+      Intent(this, MainActivity::class.java).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+      },
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+      } else {
+        android.app.PendingIntent.FLAG_UPDATE_CURRENT
+      }
+    )
+
     return NotificationCompat.Builder(this, CHANNEL_ID)
       .setContentTitle("TwinControl Live Casting")
-      .setContentText("Target screen is streaming securely to authorized Controller")
+      .setContentText("Target screen is streaming live to authorized Controller")
       .setSmallIcon(R.mipmap.ic_launcher)
+      .setContentIntent(pendingIntent)
       .setOngoing(true)
       .setPriority(NotificationCompat.PRIORITY_LOW)
       .build()
