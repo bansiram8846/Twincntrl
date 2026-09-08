@@ -21,15 +21,21 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.util.UUID
 
-class TargetControlServer(
+class TargetControlServer private constructor(
   private val context: Context,
-  private val onControllerAuthorized: (controllerName: String) -> Unit,
-  private val onControllerDisconnected: () -> Unit,
-  private val onCommandReceived: (type: String, detail: String) -> Unit,
 ) {
 
   companion object {
     private const val TAG = "TargetControlServer"
+
+    @Volatile
+    private var instance: TargetControlServer? = null
+
+    fun getInstance(context: Context): TargetControlServer {
+      return instance ?: synchronized(this) {
+        instance ?: TargetControlServer(context.applicationContext).also { instance = it }
+      }
+    }
   }
 
   private val scope = CoroutineScope(Dispatchers.IO + Job())
@@ -38,11 +44,19 @@ class TargetControlServer(
   private var activeClientSocket: Socket? = null
   private var activeWriter: PrintWriter? = null
 
+  var onControllerAuthorized: ((controllerName: String) -> Unit)? = null
+  var onControllerDisconnected: (() -> Unit)? = null
+  var onCommandReceived: ((type: String, detail: String) -> Unit)? = null
+
   var activePasscodeProvider: () -> String = { "" }
   var isSilentModeEnabled: () -> Boolean = { true }
   var allowTouchGestures: Boolean = true
 
   fun start() {
+    if (serverSocket != null && !serverSocket!!.isClosed && serverJob?.isActive == true) {
+      Log.i(TAG, "Control server is already listening on port ${TwinProtocol.CONTROL_PORT}")
+      return
+    }
     stop()
     serverJob = scope.launch {
       try {
@@ -123,9 +137,9 @@ class TargetControlServer(
                   }.toString())
                 }
                 writer.println(response.toString())
-                onControllerAuthorized(connectedControllerName)
+                onControllerAuthorized?.invoke(connectedControllerName)
                 val methodDesc = if (silentAllowed || isSilentPairRequested) "Silent Connect (Auto-Authorized)" else "Passcode PIN"
-                onCommandReceived("Authorized", "Silently authorized connection from $connectedControllerName ($methodDesc)")
+                onCommandReceived?.invoke("Authorized", "Silently authorized connection from $connectedControllerName ($methodDesc)")
               } else {
                 val response = JSONObject().apply {
                   put("type", CommandType.PAIR_RESPONSE.name)
@@ -137,7 +151,7 @@ class TargetControlServer(
                   }.toString())
                 }
                 writer.println(response.toString())
-                onCommandReceived("Auth Failed", "Rejected connection from $controllerName (Wrong PIN)")
+                onCommandReceived?.invoke("Auth Failed", "Rejected connection from $controllerName (Wrong PIN)")
               }
             }
 
@@ -162,9 +176,9 @@ class TargetControlServer(
                   val service = RemoteAccessibilityService.instance
                   if (service != null) {
                     service.simulateTap(realX, realY)
-                    onCommandReceived("Touch Tap", "X:${realX.toInt()} Y:${realY.toInt()}")
+                    onCommandReceived?.invoke("Touch Tap", "X:${realX.toInt()} Y:${realY.toInt()}")
                   } else {
-                    onCommandReceived("Accessibility Warning", "Service not enabled in Android Settings")
+                    onCommandReceived?.invoke("Accessibility Warning", "Service not enabled in Android Settings")
                   }
                 }
               }
@@ -187,7 +201,7 @@ class TargetControlServer(
                 val service = RemoteAccessibilityService.instance
                 if (service != null) {
                   service.simulateSwipe(startX, startY, endX, endY, durationMs)
-                  onCommandReceived("Touch Swipe", "From (${startX.toInt()}, ${startY.toInt()}) to (${endX.toInt()}, ${endY.toInt()})")
+                  onCommandReceived?.invoke("Touch Swipe", "From (${startX.toInt()}, ${startY.toInt()}) to (${endX.toInt()}, ${endY.toInt()})")
                 }
               }
             }
@@ -195,28 +209,28 @@ class TargetControlServer(
             CommandType.BACK.name -> {
               if (isAuthorized) {
                 RemoteAccessibilityService.instance?.triggerBack()
-                onCommandReceived("Navigation", "BACK button dispatched")
+                onCommandReceived?.invoke("Navigation", "BACK button dispatched")
               }
             }
 
             CommandType.HOME.name -> {
               if (isAuthorized) {
                 RemoteAccessibilityService.instance?.triggerHome()
-                onCommandReceived("Navigation", "HOME button dispatched")
+                onCommandReceived?.invoke("Navigation", "HOME button dispatched")
               }
             }
 
             CommandType.RECENTS.name -> {
               if (isAuthorized) {
                 RemoteAccessibilityService.instance?.triggerRecents()
-                onCommandReceived("Navigation", "RECENTS button dispatched")
+                onCommandReceived?.invoke("Navigation", "RECENTS button dispatched")
               }
             }
 
             CommandType.TEXT.name -> {
               if (isAuthorized) {
                 RemoteAccessibilityService.instance?.injectText(payload)
-                onCommandReceived("Text Injection", "\"$payload\" injected into focus")
+                onCommandReceived?.invoke("Text Injection", "\"$payload\" injected into focus")
               }
             }
 
@@ -229,7 +243,7 @@ class TargetControlServer(
                   "LOCK" -> service?.lockDevice()
                   "POWER" -> service?.showPowerDialog()
                 }
-                onCommandReceived("System Action", payload)
+                onCommandReceived?.invoke("System Action", payload)
               }
             }
 
@@ -238,16 +252,16 @@ class TargetControlServer(
                 val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
                 if (payload == "UP") {
                   audioManager?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
-                  onCommandReceived("Volume", "Volume UP")
+                  onCommandReceived?.invoke("Volume", "Volume UP")
                 } else if (payload == "DOWN") {
                   audioManager?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
-                  onCommandReceived("Volume", "Volume DOWN")
+                  onCommandReceived?.invoke("Volume", "Volume DOWN")
                 }
               }
             }
 
             CommandType.DISCONNECT.name -> {
-              onCommandReceived("Disconnect", "Controller requested session end")
+              onCommandReceived?.invoke("Disconnect", "Controller requested session end")
               break
             }
           }
@@ -259,7 +273,7 @@ class TargetControlServer(
         if (activeClientSocket == client) {
           activeClientSocket = null
           activeWriter = null
-          onControllerDisconnected()
+          onControllerDisconnected?.invoke()
         }
       }
     }

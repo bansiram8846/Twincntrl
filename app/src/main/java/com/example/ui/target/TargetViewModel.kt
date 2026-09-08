@@ -93,27 +93,25 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
 
   // Network infrastructure
   private val discoveryManager = DiscoveryManager(context)
-  private val controlServer = TargetControlServer(
-    context = context,
-    onControllerAuthorized = { name ->
+  private val controlServer = TargetControlServer.getInstance(context)
+
+  private var timerJob: Job? = null
+
+  init {
+    controlServer.onControllerAuthorized = { name ->
       viewModelScope.launch {
         _authorizedControllerName.value = name
         _isRemoteControlActive.value = true
         ScreenStreamServer.instance.startCaptureLoop()
       }
-    },
-    onControllerDisconnected = {
+    }
+    controlServer.onControllerDisconnected = {
       viewModelScope.launch {
         _isRemoteControlActive.value = false
         _authorizedControllerName.value = "None"
       }
-    },
-    onCommandReceived = { _, _ -> }
-  )
-
-  private var timerJob: Job? = null
-
-  init {
+    }
+    controlServer.onCommandReceived = { _, _ -> }
     controlServer.activePasscodeProvider = { _oneTimePasscode.value }
     controlServer.isSilentModeEnabled = { _isSilentModeEnabled.value }
     controlServer.allowTouchGestures = _allowTouchGestures.value
@@ -240,6 +238,9 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
 
   override fun onCleared() {
     timerJob?.cancel()
+    controlServer.onControllerAuthorized = null
+    controlServer.onControllerDisconnected = null
+    controlServer.onCommandReceived = null
     if (!ScreenCaptureService.isRunning) {
       stopServerInfrastructure()
     }

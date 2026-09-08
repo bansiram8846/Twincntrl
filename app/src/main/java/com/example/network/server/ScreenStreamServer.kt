@@ -35,7 +35,18 @@ class ScreenStreamServer {
   private val activeClients = CopyOnWriteArrayList<Socket>()
   private val frameCounter = AtomicLong(0)
 
+  @Volatile
+  private var lastFramePayload: ByteArray? = null
+  @Volatile
+  private var lastFrameWidth: Int = 720
+  @Volatile
+  private var lastFrameHeight: Int = 1280
+
   fun start() {
+    if (serverSocket != null && !serverSocket!!.isClosed && listenJob?.isActive == true) {
+      Log.i(TAG, "ScreenStreamServer already listening on port ${TwinProtocol.STREAM_PORT}")
+      return
+    }
     stop()
     listenJob = scope.launch {
       try {
@@ -50,6 +61,15 @@ class ScreenStreamServer {
           client.sendBufferSize = 256 * 1024
           activeClients.add(client)
           Log.i(TAG, "New stream client connected: ${client.inetAddress.hostAddress}")
+
+          // Immediately deliver the latest cached frame so the controller displays the target screen instantly
+          val cachedBytes = lastFramePayload
+          if (cachedBytes != null) {
+            scope.launch {
+              sendFrameToClient(client, cachedBytes, lastFrameWidth, lastFrameHeight)
+            }
+          }
+
           startCaptureLoop()
         }
       } catch (e: Exception) {
@@ -127,6 +147,10 @@ class ScreenStreamServer {
   }
 
   fun broadcastFrame(jpegBytes: ByteArray, width: Int, height: Int) {
+    lastFramePayload = jpegBytes
+    lastFrameWidth = width
+    lastFrameHeight = height
+
     if (activeClients.isEmpty()) return
 
     val frameId = frameCounter.incrementAndGet()
@@ -137,27 +161,32 @@ class ScreenStreamServer {
         activeClients.remove(client)
         continue
       }
-      try {
-        val dos = DataOutputStream(client.getOutputStream())
-        // Magic
-        dos.write(TwinProtocol.FRAME_MAGIC)
-        // Timestamp
-        dos.writeLong(timestamp)
-        // Frame ID
-        dos.writeLong(frameId)
-        // Dimensions
-        dos.writeInt(width)
-        dos.writeInt(height)
-        // Payload size
-        dos.writeInt(jpegBytes.size)
-        // Data
-        dos.write(jpegBytes)
-        dos.flush()
-      } catch (e: Exception) {
-        Log.d(TAG, "Client dropped during broadcast: ${e.message}")
-        try { client.close() } catch (_: Exception) {}
-        activeClients.remove(client)
-      }
+      sendFrameToClient(client, jpegBytes, width, height, frameId, timestamp)
+    }
+  }
+
+  private fun sendFrameToClient(
+    client: Socket,
+    jpegBytes: ByteArray,
+    width: Int,
+    height: Int,
+    frameId: Long = frameCounter.incrementAndGet(),
+    timestamp: Long = System.currentTimeMillis(),
+  ) {
+    try {
+      val dos = DataOutputStream(client.getOutputStream())
+      dos.write(TwinProtocol.FRAME_MAGIC)
+      dos.writeLong(timestamp)
+      dos.writeLong(frameId)
+      dos.writeInt(width)
+      dos.writeInt(height)
+      dos.writeInt(jpegBytes.size)
+      dos.write(jpegBytes)
+      dos.flush()
+    } catch (e: Exception) {
+      Log.d(TAG, "Client dropped during frame transmit: ${e.message}")
+      try { client.close() } catch (_: Exception) {}
+      activeClients.remove(client)
     }
   }
 }

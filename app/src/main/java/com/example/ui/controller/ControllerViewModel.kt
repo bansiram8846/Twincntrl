@@ -181,10 +181,17 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
       )
     },
     onStreamDisconnected = {
-      _remoteScreenBitmap.value = null
-      _telemetry.value = _telemetry.value.copy(isMirroringActive = false, fps = 0)
+      // Preserve last rendered frame so the display never flickers or drops to dummy screen
+      // while StreamReceiver performs background auto-reconnect.
+      _telemetry.value = _telemetry.value.copy(fps = 0)
     }
   )
+
+  fun refreshStream() {
+    val dev = _activeDevice.value ?: return
+    streamReceiver.start(dev.ipAddress, TwinProtocol.STREAM_PORT)
+    addLog("Stream Refreshed", "Refreshed live video connection to ${dev.ipAddress}")
+  }
 
   private var pingJob: Job? = null
 

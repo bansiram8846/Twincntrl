@@ -73,6 +73,7 @@ import com.example.data.model.DeviceInfo
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -80,6 +81,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.example.network.protocol.TwinProtocol
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -259,13 +261,13 @@ fun RemoteScreenView(
           }
 
           IconButton(
-            onClick = { /* Refresh stream */ },
-            modifier = Modifier.size(36.dp),
+            onClick = { viewModel.refreshStream() },
+            modifier = Modifier.size(36.dp).testTag("remote_refresh_stream_button"),
           ) {
             Icon(
               imageVector = Icons.Default.Refresh,
-              contentDescription = "Refresh",
-              tint = MaterialTheme.colorScheme.onSurfaceVariant,
+              contentDescription = "Refresh Stream",
+              tint = MaterialTheme.colorScheme.primary,
               modifier = Modifier.size(18.dp),
             )
           }
@@ -457,10 +459,52 @@ fun RemoteScreenView(
               contentScale = ContentScale.Fit,
             )
           } else {
-            TargetModeDeviceScreenView(
-              device = activeDevice,
-              onTouch = { x, y -> viewModel.onScreenTouched(x, y) },
-            )
+            // Live Stream Connecting / Standby State
+            Column(
+              modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0F1115))
+                .padding(24.dp),
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.Center,
+            ) {
+              CircularProgressIndicator(
+                modifier = Modifier.size(36.dp),
+                color = MaterialTheme.colorScheme.primary,
+                strokeWidth = 3.dp,
+              )
+              Spacer(modifier = Modifier.height(16.dp))
+              Text(
+                text = "Connecting to ${activeDevice?.name ?: "Target Device"}...",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = Color.White,
+                textAlign = TextAlign.Center,
+              )
+              Spacer(modifier = Modifier.height(6.dp))
+              Text(
+                text = "Streaming live from ${activeDevice?.ipAddress ?: "Target"}:${TwinProtocol.STREAM_PORT}\nTarget screen remains visible on this controller even when the app is closed.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.65f),
+                textAlign = TextAlign.Center,
+              )
+              Spacer(modifier = Modifier.height(20.dp))
+              Button(
+                onClick = { viewModel.refreshStream() },
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = MaterialTheme.colorScheme.primary,
+                ),
+                modifier = Modifier.testTag("remote_retry_stream_btn"),
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Refresh,
+                  contentDescription = "Refresh Stream",
+                  modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Refresh Stream")
+              }
+            }
           }
 
           // Simulated Remote Touch Ripple & Precision Pointer Tag

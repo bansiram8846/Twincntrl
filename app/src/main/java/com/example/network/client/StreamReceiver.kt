@@ -7,6 +7,7 @@ import com.example.network.protocol.TwinProtocol
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -49,84 +50,91 @@ class StreamReceiver(
   fun start(targetIp: String, targetPort: Int = TwinProtocol.STREAM_PORT) {
     stop()
     streamJob = scope.launch {
-      var s: Socket? = null
-      try {
-        s = Socket()
-        s.tcpNoDelay = true
-        s.receiveBufferSize = 512 * 1024
-        s.connect(InetSocketAddress(targetIp, targetPort), 4000)
-        socket = s
-        Log.i(TAG, "Connected to stream socket at $targetIp:$targetPort")
+      while (isActive) {
+        var s: Socket? = null
+        try {
+          s = Socket()
+          s.tcpNoDelay = true
+          s.receiveBufferSize = 512 * 1024
+          s.connect(InetSocketAddress(targetIp, targetPort), 4000)
+          socket = s
+          Log.i(TAG, "Connected to stream socket at $targetIp:$targetPort")
 
-        val dis = DataInputStream(s.getInputStream())
-        val magicBuffer = ByteArray(4)
+          val dis = DataInputStream(s.getInputStream())
+          val magicBuffer = ByteArray(4)
 
-        while (isActive && !s.isClosed) {
-          dis.readFully(magicBuffer)
-          if (!Arrays.equals(magicBuffer, TwinProtocol.FRAME_MAGIC)) {
-            Log.w(TAG, "Frame magic mismatch, resyncing...")
-            continue
-          }
-
-          val timestamp = dis.readLong()
-          val frameId = dis.readLong()
-          val width = dis.readInt()
-          val height = dis.readInt()
-          val payloadLength = dis.readInt()
-
-          if (payloadLength <= 0 || payloadLength > 5 * 1024 * 1024) {
-            Log.w(TAG, "Invalid payload length: $payloadLength")
-            continue
-          }
-
-          val payload = ByteArray(payloadLength)
-          dis.readFully(payload)
-
-          // Decode bitmap
-          val bitmap = BitmapFactory.decodeByteArray(payload, 0, payload.size)
-          if (bitmap != null) {
-            val now = System.currentTimeMillis()
-            val latency = (now - timestamp).coerceIn(1, 1000)
-
-            // Dropped frame check
-            if (lastFrameId >= 0 && frameId > lastFrameId + 1) {
-              totalDroppedFrames += (frameId - lastFrameId - 1).toInt()
-            }
-            lastFrameId = frameId
-
-            // Rate calculation
-            frameCountInSecond++
-            bytesInCurrentSecond += (payloadLength + TwinProtocol.HEADER_SIZE)
-
-            if (now - lastSecondTimestamp >= 1000) {
-              currentFps = frameCountInSecond
-              currentBitrateMbps = (bytesInCurrentSecond * 8f) / 1_000_000f
-              frameCountInSecond = 0
-              bytesInCurrentSecond = 0
-              lastSecondTimestamp = now
+          while (isActive && !s.isClosed) {
+            dis.readFully(magicBuffer)
+            if (!Arrays.equals(magicBuffer, TwinProtocol.FRAME_MAGIC)) {
+              Log.w(TAG, "Frame magic mismatch, resyncing...")
+              continue
             }
 
-            val telemetry = StreamTelemetryUpdate(
-              fps = if (currentFps > 0) currentFps else 30,
-              latencyMs = latency,
-              bitrateMbps = currentBitrateMbps,
-              droppedFrames = totalDroppedFrames,
-              width = width,
-              height = height,
-            )
+            val timestamp = dis.readLong()
+            val frameId = dis.readLong()
+            val width = dis.readInt()
+            val height = dis.readInt()
+            val payloadLength = dis.readInt()
 
-            withContext(Dispatchers.Main) {
-              onFrameReceived(bitmap, telemetry)
+            if (payloadLength <= 0 || payloadLength > 5 * 1024 * 1024) {
+              Log.w(TAG, "Invalid payload length: $payloadLength")
+              continue
+            }
+
+            val payload = ByteArray(payloadLength)
+            dis.readFully(payload)
+
+            // Decode bitmap
+            val bitmap = BitmapFactory.decodeByteArray(payload, 0, payload.size)
+            if (bitmap != null) {
+              val now = System.currentTimeMillis()
+              val latency = (now - timestamp).coerceIn(1, 1000)
+
+              // Dropped frame check
+              if (lastFrameId >= 0 && frameId > lastFrameId + 1) {
+                totalDroppedFrames += (frameId - lastFrameId - 1).toInt()
+              }
+              lastFrameId = frameId
+
+              // Rate calculation
+              frameCountInSecond++
+              bytesInCurrentSecond += (payloadLength + TwinProtocol.HEADER_SIZE)
+
+              if (now - lastSecondTimestamp >= 1000) {
+                currentFps = frameCountInSecond
+                currentBitrateMbps = (bytesInCurrentSecond * 8f) / 1_000_000f
+                frameCountInSecond = 0
+                bytesInCurrentSecond = 0
+                lastSecondTimestamp = now
+              }
+
+              val telemetry = StreamTelemetryUpdate(
+                fps = if (currentFps > 0) currentFps else 30,
+                latencyMs = latency,
+                bitrateMbps = currentBitrateMbps,
+                droppedFrames = totalDroppedFrames,
+                width = width,
+                height = height,
+              )
+
+              withContext(Dispatchers.Main) {
+                onFrameReceived(bitmap, telemetry)
+              }
             }
           }
+        } catch (e: Exception) {
+          if (isActive) Log.d(TAG, "Stream receiver transient issue: ${e.message}, reconnecting in 500ms...")
+        } finally {
+          try { s?.close() } catch (_: Exception) {}
         }
-      } catch (e: Exception) {
-        if (isActive) Log.d(TAG, "Stream receiver finished: ${e.message}")
-      } finally {
-        try { s?.close() } catch (_: Exception) {}
-        withContext(Dispatchers.Main) {
-          onStreamDisconnected()
+
+        if (isActive) {
+          delay(500)
         }
+      }
+
+      withContext(Dispatchers.Main) {
+        onStreamDisconnected()
       }
     }
   }

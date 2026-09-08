@@ -26,6 +26,13 @@ import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.network.server.ScreenStreamServer
+import com.example.network.server.TargetControlServer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 
@@ -43,6 +50,11 @@ class ScreenCaptureService : Service() {
 
     var isRunning = false
       private set
+
+    @Volatile
+    var savedResultCode: Int = Activity.RESULT_CANCELED
+    @Volatile
+    var savedResultData: Intent? = null
   }
 
   private val binder = LocalBinder()
@@ -52,6 +64,15 @@ class ScreenCaptureService : Service() {
   private var handlerThread: HandlerThread? = null
   private var captureHandler: Handler? = null
   private var lastFrameTimestamp = 0L
+
+  private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
+  private var keepaliveJob: Job? = null
+  @Volatile
+  private var lastCapturedJpeg: ByteArray? = null
+  @Volatile
+  private var lastCapturedWidth: Int = 720
+  @Volatile
+  private var lastCapturedHeight: Int = 1280
 
   inner class LocalBinder : Binder() {
     fun getService(): ScreenCaptureService = this@ScreenCaptureService
@@ -68,8 +89,28 @@ class ScreenCaptureService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    when (intent?.action) {
+    if (intent == null) {
+      Log.i(TAG, "ScreenCaptureService restarted by system, maintaining active streaming and control servers")
+      val notification = buildForegroundNotification()
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+      } else {
+        startForeground(NOTIFICATION_ID, notification)
+      }
+      ScreenStreamServer.instance.start()
+      TargetControlServer.getInstance(this).start()
+      val cachedCode = savedResultCode
+      val cachedData = savedResultData
+      if (cachedCode == Activity.RESULT_OK && cachedData != null && !isRunning) {
+        startMediaProjection(cachedCode, cachedData)
+      }
+      return START_STICKY
+    }
+
+    when (intent.action) {
       ACTION_STOP -> {
+        savedResultCode = Activity.RESULT_CANCELED
+        savedResultData = null
         stopCapture()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -93,7 +134,10 @@ class ScreenCaptureService : Service() {
         }
 
         if (resultCode == Activity.RESULT_OK && data != null) {
+          savedResultCode = resultCode
+          savedResultData = data
           ScreenStreamServer.instance.start()
+          TargetControlServer.getInstance(this).start()
           startMediaProjection(resultCode, data)
         } else {
           Log.w(TAG, "Media projection permission not provided or canceled")
@@ -107,6 +151,8 @@ class ScreenCaptureService : Service() {
         } else {
           startForeground(NOTIFICATION_ID, notification)
         }
+        ScreenStreamServer.instance.start()
+        TargetControlServer.getInstance(this).start()
       }
     }
 
@@ -140,7 +186,7 @@ class ScreenCaptureService : Service() {
         ((screenHeight.toFloat() / screenWidth.toFloat()) * 720).toInt().coerceAtLeast(1280)
       }
 
-      val reader = ImageReader.newInstance(targetWidth, targetHeight, PixelFormat.RGBA_8888, 2)
+      val reader = ImageReader.newInstance(targetWidth, targetHeight, PixelFormat.RGBA_8888, 3)
       imageReader = reader
 
       reader.setOnImageAvailableListener({ ir ->
@@ -159,14 +205,32 @@ class ScreenCaptureService : Service() {
       )
 
       isRunning = true
+      startKeepaliveLoop()
       Log.i(TAG, "Full-device screen capture active: ${targetWidth}x${targetHeight}")
     } catch (e: Exception) {
       Log.e(TAG, "Failed to start MediaProjection virtual display: ${e.message}")
     }
   }
 
+  private fun startKeepaliveLoop() {
+    keepaliveJob?.cancel()
+    keepaliveJob = serviceScope.launch {
+      while (isActive && isRunning) {
+        delay(250)
+        val now = System.currentTimeMillis()
+        // If screen is static (no new frame from ImageReader in >300ms), re-broadcast the last frame
+        if (now - lastFrameTimestamp >= 300) {
+          val cached = lastCapturedJpeg
+          if (cached != null) {
+            ScreenStreamServer.instance.broadcastFrame(cached, lastCapturedWidth, lastCapturedHeight)
+          }
+        }
+      }
+    }
+  }
+
   private fun processCapturedFrame(reader: ImageReader, width: Int, height: Int) {
-    val image = reader.acquireLatestImage() ?: return
+    val image = try { reader.acquireLatestImage() } catch (_: Exception) { null } ?: return
     try {
       val now = System.currentTimeMillis()
       // Limit to ~30 FPS to avoid saturating network buffer
@@ -199,6 +263,10 @@ class ScreenCaptureService : Service() {
       croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 75, baos)
       val jpegBytes = baos.toByteArray()
 
+      lastCapturedJpeg = jpegBytes
+      lastCapturedWidth = width
+      lastCapturedHeight = height
+
       ScreenStreamServer.instance.broadcastFrame(jpegBytes, width, height)
 
       if (croppedBitmap != bitmap) {
@@ -216,6 +284,8 @@ class ScreenCaptureService : Service() {
 
   private fun stopCapture() {
     isRunning = false
+    keepaliveJob?.cancel()
+    keepaliveJob = null
     try {
       virtualDisplay?.release()
       virtualDisplay = null
@@ -232,7 +302,15 @@ class ScreenCaptureService : Service() {
 
   override fun onTaskRemoved(rootIntent: Intent?) {
     super.onTaskRemoved(rootIntent)
-    Log.i(TAG, "App task closed/swiped away, ScreenCaptureService continues broadcasting in foreground")
+    Log.i(TAG, "Target mobile app task swiped away. ScreenCaptureService remains fully alive in foreground.")
+    val notification = buildForegroundNotification()
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+    } else {
+      startForeground(NOTIFICATION_ID, notification)
+    }
+    ScreenStreamServer.instance.start()
+    TargetControlServer.getInstance(this).start()
   }
 
   override fun onDestroy() {
