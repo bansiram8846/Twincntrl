@@ -244,6 +244,10 @@ class DiscoveryManager(private val context: Context) {
     }
   }
 
+  private fun normalizeIp(ip: String): String {
+    return ip.trim().removePrefix("/").substringBefore("%")
+  }
+
   private fun resolveNsdService(serviceInfo: NsdServiceInfo) {
     try {
       nsdManager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
@@ -252,7 +256,8 @@ class DiscoveryManager(private val context: Context) {
         }
         override fun onServiceResolved(resolvedInfo: NsdServiceInfo?) {
           if (resolvedInfo == null) return
-          val host = resolvedInfo.host?.hostAddress ?: return
+          val rawHost = resolvedInfo.host?.hostAddress ?: return
+          val host = normalizeIp(rawHost)
           val port = resolvedInfo.port
           val name = resolvedInfo.serviceName.removePrefix(SERVICE_NAME_PREFIX)
           val model = resolvedInfo.attributes?.get("model")?.let { String(it) } ?: "Android Device"
@@ -264,7 +269,7 @@ class DiscoveryManager(private val context: Context) {
 
           addOrUpdateDiscoveredDevice(
             DeviceInfo(
-              id = "nsd-${host.replace(".", "-")}",
+              id = "dev-${host.replace(".", "-")}",
               name = name,
               model = model,
               ipAddress = host,
@@ -290,18 +295,35 @@ class DiscoveryManager(private val context: Context) {
 
   @Synchronized
   fun addOrUpdateDiscoveredDevice(device: DeviceInfo) {
+    val cleanIp = normalizeIp(device.ipAddress)
+    val normalizedDevice = device.copy(
+      ipAddress = cleanIp,
+      id = if (device.id.startsWith("nsd-") || device.id.startsWith("tc-")) "dev-${cleanIp.replace(".", "-")}" else device.id,
+    )
+
     // Filter out self (Device A controller) from discovery
-    if (LocalDeviceManager.isSelfDevice(context, device.ipAddress, device.name, device.id)) {
-      Log.d(TAG, "Excluding local device from discovery list: ${device.name} (${device.ipAddress})")
+    if (LocalDeviceManager.isSelfDevice(context, cleanIp, normalizedDevice.name, normalizedDevice.id)) {
+      Log.d(TAG, "Excluding local device from discovery list: ${normalizedDevice.name} ($cleanIp)")
       return
     }
 
     val current = _discoveredDevices.value.toMutableList()
-    val existingIndex = current.indexOfFirst { it.ipAddress == device.ipAddress || it.id == device.id }
+    val existingIndex = current.indexOfFirst {
+      val existingCleanIp = normalizeIp(it.ipAddress)
+      (cleanIp.isNotBlank() && existingCleanIp.isNotBlank() && cleanIp == existingCleanIp) ||
+      it.id == normalizedDevice.id ||
+      (it.name.isNotBlank() && it.name.trim().equals(normalizedDevice.name.trim(), ignoreCase = true))
+    }
+
     if (existingIndex >= 0) {
-      current[existingIndex] = device
+      val existing = current[existingIndex]
+      // Preserve richer attributes (e.g., battery info from UDP if available)
+      current[existingIndex] = normalizedDevice.copy(
+        batteryPercent = if (normalizedDevice.batteryPercent > 0 && normalizedDevice.batteryPercent != 100) normalizedDevice.batteryPercent else existing.batteryPercent,
+        isCharging = normalizedDevice.isCharging || existing.isCharging,
+      )
     } else {
-      current.add(device)
+      current.add(normalizedDevice)
     }
     _discoveredDevices.value = current
   }

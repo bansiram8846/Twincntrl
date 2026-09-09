@@ -36,7 +36,7 @@ fun TwinControlApp(
   controllerViewModel: ControllerViewModel = viewModel(),
   targetViewModel: TargetViewModel = viewModel(),
 ) {
-  var appMode by remember { mutableStateOf(AppMode.CONTROLLER) }
+  var appMode by remember { mutableStateOf(AppMode.TARGET) }
   var currentTab by remember { mutableStateOf(TwinNavigationTab.HOME) }
   var isPairingSheetOpen by remember { mutableStateOf(false) }
 

@@ -19,6 +19,13 @@ class RemoteAccessibilityService : AccessibilityService() {
   override fun onServiceConnected() {
     super.onServiceConnected()
     instance = this
+    try {
+      val info = serviceInfo ?: android.accessibilityservice.AccessibilityServiceInfo()
+      info.flags = info.flags or
+        android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+        android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+      serviceInfo = info
+    } catch (_: Exception) {}
     Log.d(TAG, "TwinControl RemoteAccessibilityService connected")
   }
 
@@ -41,7 +48,16 @@ class RemoteAccessibilityService : AccessibilityService() {
     val path = Path().apply {
       moveTo(x, y)
     }
-    val stroke = GestureDescription.StrokeDescription(path, 0, 50)
+    val stroke = GestureDescription.StrokeDescription(path, 0, 60)
+    val gesture = GestureDescription.Builder().addStroke(stroke).build()
+    return dispatchGesture(gesture, null, null)
+  }
+
+  fun simulateLongPress(x: Float, y: Float, durationMs: Long = 800): Boolean {
+    val path = Path().apply {
+      moveTo(x, y)
+    }
+    val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
     val gesture = GestureDescription.Builder().addStroke(stroke).build()
     return dispatchGesture(gesture, null, null)
   }
@@ -51,9 +67,13 @@ class RemoteAccessibilityService : AccessibilityService() {
       moveTo(startX, startY)
       lineTo(endX, endY)
     }
-    val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
+    val stroke = GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(100L))
     val gesture = GestureDescription.Builder().addStroke(stroke).build()
     return dispatchGesture(gesture, null, null)
+  }
+
+  fun simulateScroll(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long = 350): Boolean {
+    return simulateSwipe(startX, startY, endX, endY, durationMs)
   }
 
   fun triggerBack(): Boolean {

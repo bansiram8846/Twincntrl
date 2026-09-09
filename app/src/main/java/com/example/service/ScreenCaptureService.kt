@@ -27,6 +27,7 @@ import com.example.MainActivity
 import com.example.R
 import com.example.network.server.ScreenStreamServer
 import com.example.network.server.TargetControlServer
+import com.example.network.server.WebStreamServer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -99,6 +100,7 @@ class ScreenCaptureService : Service() {
       }
       ScreenStreamServer.instance.start()
       TargetControlServer.getInstance(this).start()
+      WebStreamServer.getInstance(this).start()
       val cachedCode = savedResultCode
       val cachedData = savedResultData
       if (cachedCode == Activity.RESULT_OK && cachedData != null && !isRunning) {
@@ -112,6 +114,7 @@ class ScreenCaptureService : Service() {
         savedResultCode = Activity.RESULT_CANCELED
         savedResultData = null
         stopCapture()
+        WebStreamServer.getInstance(this).stop()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
         return START_NOT_STICKY
@@ -138,6 +141,7 @@ class ScreenCaptureService : Service() {
           savedResultData = data
           ScreenStreamServer.instance.start()
           TargetControlServer.getInstance(this).start()
+          WebStreamServer.getInstance(this).start()
           startMediaProjection(resultCode, data)
         } else {
           Log.w(TAG, "Media projection permission not provided or canceled")
@@ -153,6 +157,7 @@ class ScreenCaptureService : Service() {
         }
         ScreenStreamServer.instance.start()
         TargetControlServer.getInstance(this).start()
+        WebStreamServer.getInstance(this).start()
       }
     }
 
@@ -223,6 +228,7 @@ class ScreenCaptureService : Service() {
           val cached = lastCapturedJpeg
           if (cached != null) {
             ScreenStreamServer.instance.broadcastFrame(cached, lastCapturedWidth, lastCapturedHeight)
+            WebStreamServer.getInstance(this@ScreenCaptureService).broadcastFrame(cached)
           }
         }
       }
@@ -268,6 +274,7 @@ class ScreenCaptureService : Service() {
       lastCapturedHeight = height
 
       ScreenStreamServer.instance.broadcastFrame(jpegBytes, width, height)
+      WebStreamServer.getInstance(this@ScreenCaptureService).broadcastFrame(jpegBytes)
 
       if (croppedBitmap != bitmap) {
         croppedBitmap.recycle()
@@ -311,10 +318,12 @@ class ScreenCaptureService : Service() {
     }
     ScreenStreamServer.instance.start()
     TargetControlServer.getInstance(this).start()
+    WebStreamServer.getInstance(this).start()
   }
 
   override fun onDestroy() {
     stopCapture()
+    WebStreamServer.getInstance(this).stop()
     handlerThread?.quitSafely()
     handlerThread = null
     super.onDestroy()

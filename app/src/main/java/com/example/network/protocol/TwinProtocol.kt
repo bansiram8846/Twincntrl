@@ -6,6 +6,7 @@ object TwinProtocol {
   const val CONTROL_PORT = 8989
   const val STREAM_PORT = 8990
   const val DISCOVERY_PORT = 8988
+  const val WEB_PORT = 8088
   const val NSD_SERVICE_TYPE = "_twincontrol._tcp"
 
   // Frame streaming protocol constants

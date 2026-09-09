@@ -420,18 +420,32 @@ fun RemoteScreenView(
               if (gestureMode == GestureMode.SWIPE || gestureMode == GestureMode.SCROLL) {
                 var startX = 0f
                 var startY = 0f
+                var currentX = 0f
+                var currentY = 0f
                 detectDragGestures(
                   onDragStart = { offset ->
                     startX = (offset.x / size.width).coerceIn(0f, 1f)
                     startY = (offset.y / size.height).coerceIn(0f, 1f)
+                    currentX = startX
+                    currentY = startY
                   },
                   onDrag = { change, _ ->
                     change.consume()
-                    val endX = (change.position.x / size.width).coerceIn(0f, 1f)
-                    val endY = (change.position.y / size.height).coerceIn(0f, 1f)
-                    viewModel.onScreenSwiped(startX, startY, endX, endY, 200L)
-                    startX = endX
-                    startY = endY
+                    currentX = (change.position.x / size.width).coerceIn(0f, 1f)
+                    currentY = (change.position.y / size.height).coerceIn(0f, 1f)
+                  },
+                  onDragEnd = {
+                    val dx = currentX - startX
+                    val dy = currentY - startY
+                    if (kotlin.math.hypot(dx, dy) > 0.03f) {
+                      viewModel.onScreenSwiped(startX, startY, currentX, currentY, 280L)
+                    } else {
+                      if (gestureMode == GestureMode.SCROLL) {
+                        viewModel.sendQuickGesture("SCROLL_DOWN")
+                      } else {
+                        viewModel.sendQuickGesture("SWIPE_UP")
+                      }
+                    }
                   }
                 )
               } else {
@@ -444,8 +458,7 @@ fun RemoteScreenView(
                   onLongPress = { offset ->
                     val normX = (offset.x / size.width).coerceIn(0f, 1f)
                     val normY = (offset.y / size.height).coerceIn(0f, 1f)
-                    viewModel.setGestureMode(GestureMode.LONG_PRESS)
-                    viewModel.onScreenTouched(normX, normY)
+                    viewModel.sendTouchWithAction(normX, normY, "LONG_PRESS")
                   }
                 )
               }
@@ -748,6 +761,41 @@ fun RemoteScreenView(
                 icon = Icons.Default.UnfoldMore,
                 selected = gestureMode == GestureMode.SCROLL,
                 onClick = { viewModel.setGestureMode(GestureMode.SCROLL) },
+              )
+
+              Box(
+                modifier = Modifier
+                  .width(1.dp)
+                  .height(20.dp)
+                  .background(MaterialTheme.colorScheme.outlineVariant)
+              )
+
+              GestureModeChip(
+                label = "Swipe Up",
+                icon = Icons.Default.PlayArrow,
+                selected = false,
+                onClick = { viewModel.sendQuickGesture("SWIPE_UP") },
+              )
+
+              GestureModeChip(
+                label = "Swipe Down",
+                icon = Icons.Default.ArrowDropDown,
+                selected = false,
+                onClick = { viewModel.sendQuickGesture("SWIPE_DOWN") },
+              )
+
+              GestureModeChip(
+                label = "Swipe Left",
+                icon = Icons.Default.ArrowBackIosNew,
+                selected = false,
+                onClick = { viewModel.sendQuickGesture("SWIPE_LEFT") },
+              )
+
+              GestureModeChip(
+                label = "Swipe Right",
+                icon = Icons.Default.PlayArrow,
+                selected = false,
+                onClick = { viewModel.sendQuickGesture("SWIPE_RIGHT") },
               )
             }
           }

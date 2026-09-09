@@ -109,13 +109,17 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
   private val discoveryManager = DiscoveryManager(context)
   val nearbyDevices: StateFlow<List<DeviceInfo>> = discoveryManager.discoveredDevices
     .combine(effectiveDeviceName) { list, effectiveName ->
-      val allLocalIps = LocalDeviceManager.getAllLocalIpAddresses()
+      val allLocalIps = LocalDeviceManager.getAllLocalIpAddresses().map { it.trim().removePrefix("/").substringBefore("%") }
       val defaultName = thisDeviceName
-      list.filter { dev ->
+      list.map { dev ->
+        dev.copy(ipAddress = dev.ipAddress.trim().removePrefix("/").substringBefore("%"))
+      }.filter { dev ->
         !allLocalIps.contains(dev.ipAddress) &&
         !dev.name.equals(effectiveName, ignoreCase = true) &&
         !dev.name.equals(defaultName, ignoreCase = true) &&
         !dev.id.contains(localIpAddress.replace(".", "-"))
+      }.distinctBy {
+        if (it.ipAddress.isNotBlank()) it.ipAddress else it.name.trim().lowercase()
       }
     }
     .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -247,11 +251,40 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
       val action = when (_gestureMode.value) {
         GestureMode.TAP -> "TAP"
         GestureMode.LONG_PRESS -> "LONG_PRESS"
-        GestureMode.SWIPE -> "SWIPE"
-        GestureMode.SCROLL -> "SCROLL"
+        GestureMode.SWIPE -> "SWIPE_UP"
+        GestureMode.SCROLL -> "SCROLL_DOWN"
       }
       controllerClient.sendTouch(normX, normY, action)
       addLog("Input Dispatched", "${_gestureMode.value} at (${pixelX.toInt()}, ${pixelY.toInt()})")
+    }
+  }
+
+  fun sendTouchWithAction(normX: Float, normY: Float, action: String) {
+    val displayW = _telemetry.value.resolutionWidth
+    val displayH = _telemetry.value.resolutionHeight
+    val pixelX = normX * displayW
+    val pixelY = normY * displayH
+    _lastTouchCoordinate.value = Pair(pixelX, pixelY)
+
+    if (controllerClient.isConnected) {
+      controllerClient.sendTouch(normX, normY, action)
+      addLog("Input Dispatched", "$action at (${pixelX.toInt()}, ${pixelY.toInt()})")
+    }
+  }
+
+  fun sendQuickGesture(gesture: String) {
+    if (controllerClient.isConnected) {
+      val centerX = 0.5f
+      val centerY = 0.5f
+      when (gesture) {
+        "SWIPE_UP" -> controllerClient.sendSwipe(centerX, 0.75f, centerX, 0.25f, 250L)
+        "SWIPE_DOWN" -> controllerClient.sendSwipe(centerX, 0.25f, centerX, 0.75f, 250L)
+        "SWIPE_LEFT" -> controllerClient.sendSwipe(0.8f, centerY, 0.2f, centerY, 250L)
+        "SWIPE_RIGHT" -> controllerClient.sendSwipe(0.2f, centerY, 0.8f, centerY, 250L)
+        "SCROLL_UP" -> controllerClient.sendTouch(centerX, centerY, "SCROLL_UP")
+        "SCROLL_DOWN" -> controllerClient.sendTouch(centerX, centerY, "SCROLL_DOWN")
+      }
+      addLog("Gesture Action", "Triggered $gesture on Target")
     }
   }
 
@@ -351,6 +384,10 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
 
   fun getEnteredPin(): String {
     return _pinDigits.value.joinToString("")
+  }
+
+  fun setActiveTarget(device: DeviceInfo) {
+    _activeDevice.value = device
   }
 
   fun pairWithDevice(device: DeviceInfo, directPin: String? = null, silent: Boolean = false) {

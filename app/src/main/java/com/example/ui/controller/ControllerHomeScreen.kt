@@ -93,6 +93,7 @@ fun ControllerHomeScreen(
   val activeDevice by viewModel.activeDevice.collectAsState()
   val telemetry by viewModel.telemetry.collectAsState()
   val recentDevices by viewModel.recentDevices.collectAsState()
+  val nearbyDevices by viewModel.nearbyDevices.collectAsState()
   val effectiveDeviceName by viewModel.effectiveDeviceName.collectAsState()
 
   var showDeviceInfoDialog by remember { mutableStateOf(false) }
@@ -577,6 +578,119 @@ fun ControllerHomeScreen(
           label = "Sync Clipboard",
           iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+      }
+    }
+
+    // Discovered Nearby Targets (Live Local Wi-Fi Discovery)
+    if (nearbyDevices.isNotEmpty()) {
+      Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+          ) {
+            Box(
+              modifier = Modifier
+                .size(10.dp)
+                .alpha(pulseAlpha)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary)
+            )
+            Text(
+              text = "Discovered Targets (${nearbyDevices.size})",
+              style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+              color = MaterialTheme.colorScheme.onSurface,
+            )
+          }
+
+          Text(
+            text = "Tap to Connect",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.primary,
+          )
+        }
+
+        nearbyDevices.forEach { device ->
+          Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(18.dp),
+            border = androidx.compose.foundation.BorderStroke(
+              1.dp,
+              MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+            ),
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.weight(1f),
+              ) {
+                Box(
+                  modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                  contentAlignment = Alignment.Center,
+                ) {
+                  Icon(
+                    imageVector = if (device.model.contains("Tablet", ignoreCase = true)) Icons.Default.TabletAndroid else Icons.Default.PhoneAndroid,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp),
+                  )
+                }
+
+                Column {
+                  Text(
+                    text = device.name,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                  )
+                  Text(
+                    text = "${device.ipAddress} • Port ${device.port}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  )
+                }
+              }
+
+              Button(
+                onClick = {
+                  viewModel.setActiveTarget(device)
+                  if (device.isAuthorized) {
+                    viewModel.connectSilently(device)
+                  } else {
+                    onNavigateToPair()
+                  }
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = MaterialTheme.colorScheme.primary,
+                  contentColor = MaterialTheme.colorScheme.onPrimary,
+                ),
+                modifier = Modifier.height(38.dp),
+              ) {
+                Text(
+                  text = if (device.isAuthorized) "Connect" else "Pair",
+                  style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                )
+              }
+            }
+          }
+        }
       }
     }
 

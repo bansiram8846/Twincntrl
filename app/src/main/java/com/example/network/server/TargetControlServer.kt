@@ -1,6 +1,7 @@
 package com.example.network.server
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioManager
 import android.os.Build
 import android.util.Log
@@ -91,6 +92,7 @@ class TargetControlServer private constructor(
   private fun handleClient(client: Socket) {
     scope.launch {
       activeClientSocket = client
+      val clientIp = client.inetAddress?.hostAddress?.removePrefix("/")?.substringBefore("%") ?: ""
       val reader = BufferedReader(InputStreamReader(client.getInputStream()))
       val writer = PrintWriter(client.getOutputStream(), true)
       activeWriter = writer
@@ -121,11 +123,16 @@ class TargetControlServer private constructor(
               val isSilentPairRequested = pairJson.optBoolean("silentMode", false) || pin == "SILENT_AUTO"
               val silentAllowed = isSilentModeEnabled()
               val isPinMatch = pin.isNotEmpty() && pin == currentPin
+              val isTrusted = com.example.network.TrustedControllerManager.getInstance(context).isTrusted(controllerName, clientIp)
 
-              // When silent mode is enabled, or when PIN matches, or silent pair requested: authorize silently
-              if (silentAllowed || isPinMatch || isSilentPairRequested || pin.isEmpty() || pin == "SILENT_AUTO") {
+              // When controller is trusted, or silent mode enabled, or PIN matches, or silent pair requested: authorize
+              if (isTrusted || silentAllowed || isPinMatch || isSilentPairRequested || pin.isEmpty() || pin == "SILENT_AUTO") {
                 isAuthorized = true
                 connectedControllerName = controllerName
+
+                // Store / update trusted controller store
+                com.example.network.TrustedControllerManager.getInstance(context).addTrustedController(controllerName, clientIp)
+
                 val response = JSONObject().apply {
                   put("type", CommandType.PAIR_RESPONSE.name)
                   put("commandId", commandId)
@@ -134,11 +141,16 @@ class TargetControlServer private constructor(
                     put("success", true)
                     put("token", UUID.randomUUID().toString())
                     put("silent", true)
+                    put("trusted", isTrusted)
                   }.toString())
                 }
                 writer.println(response.toString())
                 onControllerAuthorized?.invoke(connectedControllerName)
-                val methodDesc = if (silentAllowed || isSilentPairRequested) "Silent Connect (Auto-Authorized)" else "Passcode PIN"
+                val methodDesc = when {
+                  isTrusted -> "Trusted Device (Auto-Authorized)"
+                  silentAllowed || isSilentPairRequested -> "Silent Connect (Auto-Authorized)"
+                  else -> "Passcode PIN"
+                }
                 onCommandReceived?.invoke("Authorized", "Silently authorized connection from $connectedControllerName ($methodDesc)")
               } else {
                 val response = JSONObject().apply {
@@ -168,6 +180,8 @@ class TargetControlServer private constructor(
               if (isAuthorized && allowTouchGestures) {
                 val xRatio = json.optDouble("x", -1.0).toFloat()
                 val yRatio = json.optDouble("y", -1.0).toFloat()
+                val action = json.optString("payload", "TAP").uppercase()
+
                 if (xRatio in 0f..1f && yRatio in 0f..1f) {
                   val metrics = context.resources.displayMetrics
                   val realX = xRatio * metrics.widthPixels
@@ -175,10 +189,42 @@ class TargetControlServer private constructor(
 
                   val service = RemoteAccessibilityService.instance
                   if (service != null) {
-                    service.simulateTap(realX, realY)
-                    onCommandReceived?.invoke("Touch Tap", "X:${realX.toInt()} Y:${realY.toInt()}")
+                    when (action) {
+                      "LONG_PRESS" -> {
+                        service.simulateLongPress(realX, realY, 800L)
+                        onCommandReceived?.invoke("Long Press", "X:${realX.toInt()} Y:${realY.toInt()}")
+                      }
+                      "SCROLL", "SCROLL_DOWN" -> {
+                        service.simulateScroll(realX, realY + 280f, realX, realY - 280f, 320L)
+                        onCommandReceived?.invoke("Scroll Down", "At (${realX.toInt()}, ${realY.toInt()})")
+                      }
+                      "SCROLL_UP" -> {
+                        service.simulateScroll(realX, realY - 280f, realX, realY + 280f, 320L)
+                        onCommandReceived?.invoke("Scroll Up", "At (${realX.toInt()}, ${realY.toInt()})")
+                      }
+                      "SWIPE_UP" -> {
+                        service.simulateSwipe(realX, realY + 300f, realX, realY - 300f, 250L)
+                        onCommandReceived?.invoke("Swipe Up", "At (${realX.toInt()}, ${realY.toInt()})")
+                      }
+                      "SWIPE_DOWN" -> {
+                        service.simulateSwipe(realX, realY - 300f, realX, realY + 300f, 250L)
+                        onCommandReceived?.invoke("Swipe Down", "At (${realX.toInt()}, ${realY.toInt()})")
+                      }
+                      "SWIPE_LEFT" -> {
+                        service.simulateSwipe(realX + 250f, realY, realX - 250f, realY, 250L)
+                        onCommandReceived?.invoke("Swipe Left", "At (${realX.toInt()}, ${realY.toInt()})")
+                      }
+                      "SWIPE_RIGHT" -> {
+                        service.simulateSwipe(realX - 250f, realY, realX + 250f, realY, 250L)
+                        onCommandReceived?.invoke("Swipe Right", "At (${realX.toInt()}, ${realY.toInt()})")
+                      }
+                      else -> {
+                        service.simulateTap(realX, realY)
+                        onCommandReceived?.invoke("Touch Tap", "X:${realX.toInt()} Y:${realY.toInt()}")
+                      }
+                    }
                   } else {
-                    onCommandReceived?.invoke("Accessibility Warning", "Service not enabled in Android Settings")
+                    onCommandReceived?.invoke("Accessibility Warning", "Interaction service disabled in Target Settings")
                   }
                 }
               }
@@ -202,20 +248,31 @@ class TargetControlServer private constructor(
                 if (service != null) {
                   service.simulateSwipe(startX, startY, endX, endY, durationMs)
                   onCommandReceived?.invoke("Touch Swipe", "From (${startX.toInt()}, ${startY.toInt()}) to (${endX.toInt()}, ${endY.toInt()})")
+                } else {
+                  onCommandReceived?.invoke("Accessibility Warning", "Interaction service disabled in Target Settings")
                 }
               }
             }
 
             CommandType.BACK.name -> {
               if (isAuthorized) {
-                RemoteAccessibilityService.instance?.triggerBack()
-                onCommandReceived?.invoke("Navigation", "BACK button dispatched")
+                val handled = RemoteAccessibilityService.instance?.triggerBack() ?: false
+                onCommandReceived?.invoke("Navigation", "BACK button dispatched (handled: $handled)")
               }
             }
 
             CommandType.HOME.name -> {
               if (isAuthorized) {
-                RemoteAccessibilityService.instance?.triggerHome()
+                val handled = RemoteAccessibilityService.instance?.triggerHome() ?: false
+                if (!handled) {
+                  try {
+                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                      addCategory(Intent.CATEGORY_HOME)
+                      flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(homeIntent)
+                  } catch (_: Exception) {}
+                }
                 onCommandReceived?.invoke("Navigation", "HOME button dispatched")
               }
             }
@@ -229,8 +286,8 @@ class TargetControlServer private constructor(
 
             CommandType.TEXT.name -> {
               if (isAuthorized) {
-                RemoteAccessibilityService.instance?.injectText(payload)
-                onCommandReceived?.invoke("Text Injection", "\"$payload\" injected into focus")
+                val ok = RemoteAccessibilityService.instance?.injectText(payload) ?: false
+                onCommandReceived?.invoke("Text Injection", "\"$payload\" injected (success: $ok)")
               }
             }
 
@@ -238,8 +295,28 @@ class TargetControlServer private constructor(
               if (isAuthorized) {
                 val service = RemoteAccessibilityService.instance
                 when (payload) {
-                  "NOTIFICATIONS" -> service?.showNotifications()
-                  "QUICK_SETTINGS" -> service?.showQuickSettings()
+                  "NOTIFICATIONS" -> {
+                    val ok = service?.showNotifications() ?: false
+                    if (!ok) {
+                      try {
+                        val sbservice = context.getSystemService("statusbar")
+                        val statusbarManager = Class.forName("android.app.StatusBarManager")
+                        val showsb = statusbarManager.getMethod("expandNotificationsPanel")
+                        showsb.invoke(sbservice)
+                      } catch (_: Exception) {}
+                    }
+                  }
+                  "QUICK_SETTINGS" -> {
+                    val ok = service?.showQuickSettings() ?: false
+                    if (!ok) {
+                      try {
+                        val sbservice = context.getSystemService("statusbar")
+                        val statusbarManager = Class.forName("android.app.StatusBarManager")
+                        val showsb = statusbarManager.getMethod("expandSettingsPanel")
+                        showsb.invoke(sbservice)
+                      } catch (_: Exception) {}
+                    }
+                  }
                   "LOCK" -> service?.lockDevice()
                   "POWER" -> service?.showPowerDialog()
                 }
@@ -250,12 +327,19 @@ class TargetControlServer private constructor(
             "VOLUME" -> {
               if (isAuthorized) {
                 val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-                if (payload == "UP") {
-                  audioManager?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
-                  onCommandReceived?.invoke("Volume", "Volume UP")
-                } else if (payload == "DOWN") {
-                  audioManager?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
-                  onCommandReceived?.invoke("Volume", "Volume DOWN")
+                when (payload) {
+                  "UP" -> {
+                    audioManager?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
+                    onCommandReceived?.invoke("Volume", "Volume UP")
+                  }
+                  "DOWN" -> {
+                    audioManager?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI)
+                    onCommandReceived?.invoke("Volume", "Volume DOWN")
+                  }
+                  "MUTE" -> {
+                    audioManager?.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, AudioManager.FLAG_SHOW_UI)
+                    onCommandReceived?.invoke("Volume", "Volume Muted / Unmuted")
+                  }
                 }
               }
             }

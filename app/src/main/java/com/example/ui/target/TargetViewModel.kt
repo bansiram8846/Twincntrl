@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.network.BluetoothHelper
 import com.example.network.LocalDeviceManager
 import com.example.network.discovery.DiscoveryManager
+import com.example.network.protocol.TwinProtocol
 import com.example.network.server.ScreenStreamServer
 import com.example.network.server.TargetControlServer
 import com.example.service.RemoteAccessibilityService
@@ -58,6 +59,34 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
   private val prefs = context.getSharedPreferences("twincontrol_target_prefs", Context.MODE_PRIVATE)
   private val _isSilentModeEnabled = MutableStateFlow(prefs.getBoolean("silent_mode_enabled", true))
   val isSilentModeEnabled: StateFlow<Boolean> = _isSilentModeEnabled.asStateFlow()
+
+  private val trustedControllerManager = com.example.network.TrustedControllerManager.getInstance(context)
+  val trustedControllers: StateFlow<List<com.example.data.model.TrustedController>> = trustedControllerManager.trustedControllers
+
+  fun removeTrustedController(id: String) {
+    trustedControllerManager.removeTrustedController(id)
+  }
+
+  fun clearAllTrustedControllers() {
+    trustedControllerManager.revokeAll()
+  }
+
+  fun getWebShareUrl(): String {
+    val ip = if (localIpAddress.isNotBlank() && localIpAddress != "127.0.0.1") localIpAddress else "127.0.0.1"
+    return "http://$ip:${TwinProtocol.WEB_PORT}/"
+  }
+
+  fun shareWebLink(ctx: Context) {
+    val url = getWebShareUrl()
+    val sendIntent = Intent().apply {
+      action = Intent.ACTION_SEND
+      putExtra(Intent.EXTRA_TEXT, "View and control my screen instantly without installing any app: $url")
+      type = "text/plain"
+    }
+    val shareIntent = Intent.createChooser(sendIntent, "Share Screen Control Link")
+    shareIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+    ctx.startActivity(shareIntent)
+  }
 
   private val _selectedMedium = MutableStateFlow("WIFI") // "WIFI", "QR", "BLUETOOTH", "INTERNET"
   val selectedMedium: StateFlow<String> = _selectedMedium.asStateFlow()
