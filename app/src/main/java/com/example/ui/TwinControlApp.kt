@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.MainActivity
 import com.example.data.model.AppMode
 import com.example.data.model.ConnectionState
 import com.example.ui.activity.ActivityScreen
@@ -36,9 +38,21 @@ fun TwinControlApp(
   controllerViewModel: ControllerViewModel = viewModel(),
   targetViewModel: TargetViewModel = viewModel(),
 ) {
-  var appMode by remember { mutableStateOf(AppMode.TARGET) }
+  var appMode by remember { mutableStateOf(AppMode.CONTROLLER) }
   var currentTab by remember { mutableStateOf(TwinNavigationTab.HOME) }
   var isPairingSheetOpen by remember { mutableStateOf(false) }
+
+  val pendingTargetLink by MainActivity.pendingTargetLink.collectAsState()
+
+  // When launched from a Target invite link (deep link or web redirect)
+  LaunchedEffect(pendingTargetLink) {
+    pendingTargetLink?.let { payload ->
+      appMode = AppMode.TARGET
+      currentTab = TwinNavigationTab.HOME
+      targetViewModel.connectToControllerFromLink(payload.controllerIp, payload.controllerName)
+      MainActivity.pendingTargetLink.value = null
+    }
+  }
 
   val connectionState by controllerViewModel.connectionState.collectAsState()
   val isConnected = connectionState == ConnectionState.CONNECTED
@@ -59,7 +73,8 @@ fun TwinControlApp(
       }
     },
     bottomBar = {
-      if (!isPairingSheetOpen) {
+      // Target mode is ultra-lightweight: NO bottom navigation bar, NO tabs, NO settings screens
+      if (appMode == AppMode.CONTROLLER && !isPairingSheetOpen) {
         TwinBottomNavBar(
           currentTab = currentTab,
           onTabSelected = { tab ->
@@ -90,18 +105,14 @@ fun TwinControlApp(
           label = "mode_tab_transition",
         ) { (mode, tab) ->
           if (mode == AppMode.TARGET) {
-            when (tab) {
-              TwinNavigationTab.SETTINGS -> SettingsScreen()
-              TwinNavigationTab.ACTIVITY -> ActivityScreen(viewModel = controllerViewModel)
-              TwinNavigationTab.DEVICES -> DevicesScreen(
-                viewModel = controllerViewModel,
-                onNavigateToPair = { isPairingSheetOpen = true },
-              )
-              else -> TargetScreen(
-                viewModel = targetViewModel,
-                onOpenSettings = { currentTab = TwinNavigationTab.SETTINGS },
-              )
-            }
+            // Target mode is ultra lightweight: single focused screen, no settings or extra tabs
+            TargetScreen(
+              viewModel = targetViewModel,
+              onSwitchToControllerMode = {
+                appMode = AppMode.CONTROLLER
+                currentTab = TwinNavigationTab.HOME
+              },
+            )
           } else {
             when (tab) {
               TwinNavigationTab.HOME -> ControllerHomeScreen(

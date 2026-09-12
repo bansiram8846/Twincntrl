@@ -1,11 +1,14 @@
 package com.example.ui.controller
 
+import android.content.Context
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,16 +32,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.ScreenShare
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SettingsRemote
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.TabletAndroid
@@ -68,7 +76,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -81,6 +92,7 @@ import com.example.ui.theme.StreamConnectedBg
 import com.example.ui.theme.StreamConnectedGreen
 import com.example.ui.theme.StreamErrorBg
 import com.example.ui.theme.StreamErrorRed
+import com.example.util.QrCodeUtil
 
 @Composable
 fun ControllerHomeScreen(
@@ -95,9 +107,12 @@ fun ControllerHomeScreen(
   val recentDevices by viewModel.recentDevices.collectAsState()
   val nearbyDevices by viewModel.nearbyDevices.collectAsState()
   val effectiveDeviceName by viewModel.effectiveDeviceName.collectAsState()
+  val targetJustJoined by viewModel.targetJustJoined.collectAsState()
+  val context = LocalContext.current
 
   var showDeviceInfoDialog by remember { mutableStateOf(false) }
   var showRenameDialog by remember { mutableStateOf(false) }
+  var showTargetLinkDialog by remember { mutableStateOf(false) }
   var renameInput by remember { mutableStateOf("") }
 
   val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -193,6 +208,211 @@ fun ControllerHomeScreen(
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
           )
+        }
+      }
+    }
+
+    // 1.5 Target Device Connected Alert Banner (when opened via link)
+    AnimatedVisibility(visible = targetJustJoined != null) {
+      targetJustJoined?.let { joinedTarget ->
+        Surface(
+          color = StreamConnectedGreen.copy(alpha = 0.12f),
+          shape = RoundedCornerShape(20.dp),
+          border = androidx.compose.foundation.BorderStroke(1.5.dp, StreamConnectedGreen),
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+              Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                  modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(StreamConnectedGreen),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                  text = "TARGET READY TO MONITOR",
+                  style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = StreamConnectedGreen,
+                    letterSpacing = 1.sp,
+                  ),
+                )
+              }
+
+              IconButton(
+                onClick = { viewModel.dismissTargetJoinedBanner() },
+                modifier = Modifier.size(24.dp),
+              ) {
+                Icon(
+                  imageVector = Icons.Default.Close,
+                  contentDescription = "Dismiss",
+                  tint = StreamConnectedGreen,
+                  modifier = Modifier.size(16.dp),
+                )
+              }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+              text = "${joinedTarget.name} Connected",
+              style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+              color = MaterialTheme.colorScheme.onSurface,
+            )
+
+            Text(
+              text = "Device opened your target link and is ready to stream screen.",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Button(
+              onClick = {
+                viewModel.startMonitoringTarget(joinedTarget, onNavigateToRemote)
+              },
+              colors = ButtonDefaults.buttonColors(containerColor = StreamConnectedGreen),
+              shape = RoundedCornerShape(12.dp),
+              modifier = Modifier.fillMaxWidth().height(46.dp),
+            ) {
+              Icon(
+                imageVector = Icons.Default.Videocam,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp),
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = "Monitor Now",
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+              )
+            }
+          }
+        }
+      }
+    }
+
+    // 1.6 Create Target Link Card
+    Surface(
+      color = MaterialTheme.colorScheme.surface,
+      shape = RoundedCornerShape(20.dp),
+      border = androidx.compose.foundation.BorderStroke(
+        width = 1.dp,
+        color = MaterialTheme.colorScheme.outlineVariant,
+      ),
+      modifier = Modifier.fillMaxWidth(),
+    ) {
+      Column(modifier = Modifier.padding(16.dp)) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Box(
+            modifier = Modifier
+              .size(40.dp)
+              .clip(RoundedCornerShape(12.dp))
+              .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+          ) {
+            Icon(
+              imageVector = Icons.Default.Link,
+              contentDescription = null,
+              tint = MaterialTheme.colorScheme.primary,
+              modifier = Modifier.size(22.dp),
+            )
+          }
+          Spacer(modifier = Modifier.width(12.dp))
+          Column(modifier = Modifier.weight(1f)) {
+            Text(
+              text = "Create Target Link",
+              style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+              color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+              text = "Open on other phone to monitor it here instantly",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        val inviteUrl = viewModel.getTargetInviteLink()
+        Surface(
+          color = MaterialTheme.colorScheme.surfaceContainerLow,
+          shape = RoundedCornerShape(10.dp),
+          border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+          ) {
+            Text(
+              text = inviteUrl,
+              style = MaterialTheme.typography.bodySmall.copy(
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                fontWeight = FontWeight.Medium,
+              ),
+              color = MaterialTheme.colorScheme.primary,
+              maxLines = 1,
+              modifier = Modifier.weight(1f).padding(end = 6.dp),
+            )
+            IconButton(
+              onClick = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Target Link", inviteUrl))
+                android.widget.Toast.makeText(context, "Link copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+              },
+              modifier = Modifier.size(30.dp),
+            ) {
+              Icon(
+                imageVector = Icons.Default.ContentCopy,
+                contentDescription = "Copy Link",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp),
+              )
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          Button(
+            onClick = { viewModel.shareTargetInviteLink(context) },
+            modifier = Modifier.weight(1f).height(42.dp),
+            shape = RoundedCornerShape(12.dp),
+          ) {
+            Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Share Target Link", style = MaterialTheme.typography.labelMedium)
+          }
+
+          OutlinedButton(
+            onClick = { showTargetLinkDialog = true },
+            modifier = Modifier.height(42.dp),
+            shape = RoundedCornerShape(12.dp),
+          ) {
+            Icon(imageVector = Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("QR", style = MaterialTheme.typography.labelMedium)
+          }
         }
       }
     }
@@ -930,6 +1150,88 @@ fun ControllerHomeScreen(
       dismissButton = {
         TextButton(onClick = { showRenameDialog = false }) {
           Text("Cancel")
+        }
+      },
+    )
+  }
+
+  // Target Mode Invite Link & QR Dialog
+  if (showTargetLinkDialog) {
+    val inviteUrl = viewModel.getTargetInviteLink()
+    val qrBitmap = remember(inviteUrl) {
+      try {
+        QrCodeUtil.generateQrBitmap(inviteUrl, 400)
+      } catch (_: Exception) {
+        null
+      }
+    }
+
+    AlertDialog(
+      onDismissRequest = { showTargetLinkDialog = false },
+      title = {
+        Text("Target Mode Invite Link", style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+      },
+      text = {
+        Column(
+          horizontalAlignment = Alignment.CenterHorizontally,
+          modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        ) {
+          Text(
+            text = "Scan this QR code with your other phone's camera, or share the link. When opened, that phone will enter Target Mode and become available here to monitor.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+
+          Spacer(modifier = Modifier.height(16.dp))
+
+          if (qrBitmap != null) {
+            Surface(
+              shape = RoundedCornerShape(16.dp),
+              border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+              color = Color.White,
+              modifier = Modifier.size(200.dp),
+            ) {
+              Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Image(
+                  bitmap = qrBitmap.asImageBitmap(),
+                  contentDescription = "Target Invite QR Code",
+                  modifier = Modifier.size(180.dp),
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(12.dp))
+
+          Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            Text(
+              text = inviteUrl,
+              style = MaterialTheme.typography.bodySmall.copy(
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                fontWeight = FontWeight.SemiBold,
+              ),
+              color = MaterialTheme.colorScheme.primary,
+              modifier = Modifier.padding(8.dp),
+            )
+          }
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = { viewModel.shareTargetInviteLink(context) },
+        ) {
+          Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+          Spacer(modifier = Modifier.width(6.dp))
+          Text("Share Link")
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { showTargetLinkDialog = false }) {
+          Text("Close")
         }
       },
     )

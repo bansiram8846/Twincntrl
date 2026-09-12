@@ -2,6 +2,7 @@ package com.example.ui.controller
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -197,12 +198,66 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     addLog("Stream Refreshed", "Refreshed live video connection to ${dev.ipAddress}")
   }
 
+  private val _targetJustJoined = MutableStateFlow<DeviceInfo?>(null)
+  val targetJustJoined: StateFlow<DeviceInfo?> = _targetJustJoined.asStateFlow()
+
+  private val targetInviteServer = com.example.network.server.TargetInviteServer.getInstance(context)
+
+  fun dismissTargetJoinedBanner() {
+    _targetJustJoined.value = null
+  }
+
+  fun getTargetInviteLink(): String {
+    val ip = if (localIpAddress.isNotBlank() && localIpAddress != "127.0.0.1") localIpAddress else "127.0.0.1"
+    return "http://$ip:${TwinProtocol.INVITE_PORT}/join"
+  }
+
+  fun getTargetDeepLink(): String {
+    val ip = if (localIpAddress.isNotBlank() && localIpAddress != "127.0.0.1") localIpAddress else "127.0.0.1"
+    val encodedName = try { java.net.URLEncoder.encode(effectiveDeviceName.value, "UTF-8") } catch (_: Exception) { "Controller" }
+    return "twincontrol://target?controllerIp=$ip&controllerName=$encodedName"
+  }
+
+  fun shareTargetInviteLink(ctx: Context) {
+    val link = getTargetInviteLink()
+    val sendIntent = Intent().apply {
+      action = Intent.ACTION_SEND
+      putExtra(Intent.EXTRA_TEXT, "Open this link on your other phone to share its screen and monitor it: $link")
+      type = "text/plain"
+    }
+    val shareIntent = Intent.createChooser(sendIntent, "Share Target Invite Link")
+    shareIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+    ctx.startActivity(shareIntent)
+  }
+
+  fun startMonitoringTarget(device: DeviceInfo, onNavigateToRemote: () -> Unit) {
+    _activeDevice.value = device
+    pairWithDevice(device, directPin = "AUTO_TRUSTED", silent = true)
+    _targetJustJoined.value = null
+    onNavigateToRemote()
+  }
+
   private var pingJob: Job? = null
 
   init {
     loadSavedDevices()
     startDiscovery()
     startPingTicker()
+    targetInviteServer.onTargetJoined = { device ->
+      viewModelScope.launch {
+        discoveryManager.addOrUpdateDiscoveredDevice(device)
+        _activeDevice.value = device
+        _targetJustJoined.value = device
+        savePairedDevice(device)
+        addLog("Target Joined Via Link", "${device.name} (${device.ipAddress}) connected as target and is ready to monitor")
+      }
+    }
+    targetInviteServer.onTargetPingReceived = { detail ->
+      viewModelScope.launch {
+        addLog("Target Link Opened", "Target invite link opened by $detail")
+      }
+    }
+    targetInviteServer.start(TwinProtocol.INVITE_PORT)
     addLog("System Initialized", "TwinControl Controller active on ${LocalDeviceManager.getWifiSsid(context)}")
   }
 
@@ -542,6 +597,7 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     pingJob?.cancel()
     disconnect()
     stopDiscovery()
+    targetInviteServer.stop()
     super.onCleared()
   }
 }

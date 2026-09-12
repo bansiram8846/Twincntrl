@@ -4,12 +4,14 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.util.Log
 import android.view.accessibility.AccessibilityManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.network.BluetoothHelper
 import com.example.network.LocalDeviceManager
 import com.example.network.discovery.DiscoveryManager
+import com.example.network.protocol.PeerBeacon
 import com.example.network.protocol.TwinProtocol
 import com.example.network.server.ScreenStreamServer
 import com.example.network.server.TargetControlServer
@@ -69,6 +71,68 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
 
   fun clearAllTrustedControllers() {
     trustedControllerManager.revokeAll()
+  }
+
+  private val _connectedControllerIp = MutableStateFlow<String?>(null)
+  val connectedControllerIp: StateFlow<String?> = _connectedControllerIp.asStateFlow()
+
+  fun connectToControllerFromLink(controllerIp: String, controllerName: String) {
+    if (controllerIp.isBlank()) return
+    _connectedControllerIp.value = controllerIp
+    _authorizedControllerName.value = controllerName
+
+    // Add controller to trusted list
+    trustedControllerManager.addTrustedController(controllerName, controllerIp)
+
+    // Notify controller invite server immediately via background HTTP & UDP
+    viewModelScope.launch(Dispatchers.IO) {
+      try {
+        val myIp = LocalDeviceManager.getLocalIpAddress(context)
+        val myName = deviceName
+        val myModel = deviceModel
+
+        val encodedName = java.net.URLEncoder.encode(myName, "UTF-8")
+        val encodedModel = java.net.URLEncoder.encode(myModel, "UTF-8")
+        val targetUrl = "http://$controllerIp:${TwinProtocol.INVITE_PORT}/api/target_ready?ip=$myIp&name=$encodedName&model=$encodedModel&port=${TwinProtocol.CONTROL_PORT}"
+        val connection = java.net.URL(targetUrl).openConnection() as java.net.HttpURLConnection
+        connection.connectTimeout = 3000
+        connection.readTimeout = 3000
+        connection.requestMethod = "GET"
+        val code = connection.responseCode
+        connection.disconnect()
+        Log.i("TargetViewModel", "Check-in to controller HTTP server response: $code")
+      } catch (e: Exception) {
+        Log.w("TargetViewModel", "HTTP check-in failed: ${e.message}")
+      }
+
+      // Also send direct UDP beacon packet to controller
+      try {
+        val socket = java.net.DatagramSocket()
+        val beacon = PeerBeacon(
+          id = "tc-${LocalDeviceManager.getLocalIpAddress(context).replace(".", "-")}",
+          name = deviceName,
+          model = deviceModel,
+          ipAddress = LocalDeviceManager.getLocalIpAddress(context),
+          port = TwinProtocol.CONTROL_PORT,
+          batteryPercent = 100,
+          isCharging = false,
+          osVersion = LocalDeviceManager.getOsVersion(),
+          wifiSsid = LocalDeviceManager.getWifiSsid(context),
+          silentMode = true,
+          pairingPin = "AUTO_TRUSTED",
+          connectionMedium = "Invite Link",
+        )
+        val jsonBytes = beacon.toJson().toByteArray(Charsets.UTF_8)
+        val targetAddr = java.net.InetAddress.getByName(controllerIp)
+        val packet = java.net.DatagramPacket(jsonBytes, jsonBytes.size, targetAddr, TwinProtocol.DISCOVERY_PORT)
+        socket.send(packet)
+        socket.close()
+      } catch (e: Exception) {
+        Log.w("TargetViewModel", "UDP check-in failed: ${e.message}")
+      }
+    }
+
+    startServerInfrastructure()
   }
 
   fun getWebShareUrl(): String {
