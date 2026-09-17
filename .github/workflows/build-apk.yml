@@ -51,6 +51,17 @@ jobs:
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
 
+      - name: Prepare APK Staging
+        run: |
+          mkdir -p .build-outputs
+          if [ -f "prebuilt/app-debug.apk" ]; then
+            cp prebuilt/app-debug.apk .build-outputs/app-debug.apk
+          elif [ -f "app/prebuilt/app-debug.apk" ]; then
+            cp app/prebuilt/app-debug.apk .build-outputs/app-debug.apk
+          elif [ -f "distribution/app-debug.apk" ]; then
+            cp distribution/app-debug.apk .build-outputs/app-debug.apk
+          fi
+
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
