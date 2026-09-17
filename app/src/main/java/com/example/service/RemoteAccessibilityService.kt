@@ -12,21 +12,18 @@ class RemoteAccessibilityService : AccessibilityService() {
 
   companion object {
     private const val TAG = "RemoteAccessibility"
+    @Volatile
     var instance: RemoteAccessibilityService? = null
       private set
+
+    val isRunning: Boolean
+      get() = instance != null
   }
 
   override fun onServiceConnected() {
     super.onServiceConnected()
     instance = this
-    try {
-      val info = serviceInfo ?: android.accessibilityservice.AccessibilityServiceInfo()
-      info.flags = info.flags or
-        android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-        android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
-      serviceInfo = info
-    } catch (_: Exception) {}
-    Log.d(TAG, "TwinControl RemoteAccessibilityService connected")
+    Log.d(TAG, "TwinControl RemoteAccessibilityService connected and ready")
   }
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -45,31 +42,67 @@ class RemoteAccessibilityService : AccessibilityService() {
   }
 
   fun simulateTap(x: Float, y: Float): Boolean {
+    val clampedX = x.coerceAtLeast(1f)
+    val clampedY = y.coerceAtLeast(1f)
     val path = Path().apply {
-      moveTo(x, y)
+      moveTo(clampedX, clampedY)
+      lineTo(clampedX, clampedY + 1f) // Ensure non-empty path for Android GestureDescription
     }
-    val stroke = GestureDescription.StrokeDescription(path, 0, 60)
+    val stroke = GestureDescription.StrokeDescription(path, 0, 50)
     val gesture = GestureDescription.Builder().addStroke(stroke).build()
-    return dispatchGesture(gesture, null, null)
+    return dispatchGesture(gesture, object : GestureResultCallback() {
+      override fun onCompleted(gestureDescription: GestureDescription?) {
+        Log.d(TAG, "simulateTap succeeded at ($clampedX, $clampedY)")
+      }
+      override fun onCancelled(gestureDescription: GestureDescription?) {
+        Log.w(TAG, "simulateTap cancelled by system at ($clampedX, $clampedY)")
+      }
+    }, null)
   }
 
   fun simulateLongPress(x: Float, y: Float, durationMs: Long = 800): Boolean {
+    val clampedX = x.coerceAtLeast(1f)
+    val clampedY = y.coerceAtLeast(1f)
     val path = Path().apply {
-      moveTo(x, y)
+      moveTo(clampedX, clampedY)
+      lineTo(clampedX, clampedY + 1f) // Ensure non-empty path
     }
-    val stroke = GestureDescription.StrokeDescription(path, 0, durationMs)
+    val stroke = GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(500L))
     val gesture = GestureDescription.Builder().addStroke(stroke).build()
-    return dispatchGesture(gesture, null, null)
+    return dispatchGesture(gesture, object : GestureResultCallback() {
+      override fun onCompleted(gestureDescription: GestureDescription?) {
+        Log.d(TAG, "simulateLongPress succeeded at ($clampedX, $clampedY)")
+      }
+      override fun onCancelled(gestureDescription: GestureDescription?) {
+        Log.w(TAG, "simulateLongPress cancelled at ($clampedX, $clampedY)")
+      }
+    }, null)
   }
 
   fun simulateSwipe(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long = 300): Boolean {
-    val path = Path().apply {
-      moveTo(startX, startY)
-      lineTo(endX, endY)
+    val clampedStartX = startX.coerceAtLeast(1f)
+    val clampedStartY = startY.coerceAtLeast(1f)
+    var clampedEndX = endX.coerceAtLeast(1f)
+    var clampedEndY = endY.coerceAtLeast(1f)
+
+    if (clampedStartX == clampedEndX && clampedStartY == clampedEndY) {
+      clampedEndY += 2f
     }
-    val stroke = GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(100L))
+
+    val path = Path().apply {
+      moveTo(clampedStartX, clampedStartY)
+      lineTo(clampedEndX, clampedEndY)
+    }
+    val stroke = GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(80L, 2000L))
     val gesture = GestureDescription.Builder().addStroke(stroke).build()
-    return dispatchGesture(gesture, null, null)
+    return dispatchGesture(gesture, object : GestureResultCallback() {
+      override fun onCompleted(gestureDescription: GestureDescription?) {
+        Log.d(TAG, "simulateSwipe succeeded: ($clampedStartX,$clampedStartY) -> ($clampedEndX,$clampedEndY)")
+      }
+      override fun onCancelled(gestureDescription: GestureDescription?) {
+        Log.w(TAG, "simulateSwipe cancelled: ($clampedStartX,$clampedStartY) -> ($clampedEndX,$clampedEndY)")
+      }
+    }, null)
   }
 
   fun simulateScroll(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long = 350): Boolean {
@@ -89,12 +122,37 @@ class RemoteAccessibilityService : AccessibilityService() {
   }
 
   fun injectText(text: String): Boolean {
-    val rootNode = rootInActiveWindow ?: return false
-    val focusedNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
-    val arguments = Bundle().apply {
-      putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+    val rootNode = rootInActiveWindow
+    if (rootNode != null) {
+      val focusedNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        ?: rootNode.findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
+        ?: findEditableNode(rootNode)
+      if (focusedNode != null) {
+        val arguments = Bundle().apply {
+          putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        }
+        val res = focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+        if (res) return true
+      }
     }
-    return focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+    // Clipboard paste fallback
+    try {
+      val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+      val clip = android.content.ClipData.newPlainText("remote_input", text)
+      clipboard?.setPrimaryClip(clip)
+      rootNode?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+    } catch (_: Exception) {}
+    return false
+  }
+
+  private fun findEditableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+    if (node.isEditable) return node
+    for (i in 0 until node.childCount) {
+      val child = node.getChild(i) ?: continue
+      val found = findEditableNode(child)
+      if (found != null) return found
+    }
+    return null
   }
 
   fun showNotifications(): Boolean {

@@ -103,7 +103,19 @@ class TargetInviteServer private constructor(private val context: Context) {
 
       when {
         path == "/join" || path == "/target" || path == "/" -> {
-          serveJoinHtml(out, remoteIp)
+          val localIp = LocalDeviceManager.getLocalIpAddress(context)
+          val redirectLocation = "http://$localIp:${TwinProtocol.WEB_PORT}/"
+          val redirectResponse = (
+            "HTTP/1.1 302 Found\r\n" +
+            "Location: $redirectLocation\r\n" +
+            "Cache-Control: no-cache, no-store\r\n" +
+            "Connection: close\r\n" +
+            "Content-Type: text/html\r\n" +
+            "Content-Length: 120\r\n\r\n" +
+            "<html><head><meta http-equiv=\"refresh\" content=\"0;url=$redirectLocation\"></head><body>Redirecting to <a href=\"$redirectLocation\">Web Remote</a></body></html>"
+          ).toByteArray(Charsets.UTF_8)
+          out.write(redirectResponse)
+          out.flush()
         }
         path.startsWith("/api/target_ready") -> {
           handleTargetReady(remoteIp, query, reader, contentLength, out)

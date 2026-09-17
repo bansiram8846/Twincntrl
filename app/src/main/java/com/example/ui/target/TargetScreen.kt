@@ -30,10 +30,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.ScreenShare
 import androidx.compose.material.icons.filled.SettingsRemote
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.StopScreenShare
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -75,6 +82,7 @@ fun TargetScreen(
   val isRemoteControlActive by viewModel.isRemoteControlActive.collectAsState()
   val authorizedController by viewModel.authorizedControllerName.collectAsState()
   val connectedControllerIp by viewModel.connectedControllerIp.collectAsState()
+  val isAccessibilityGranted by viewModel.isAccessibilityGranted.collectAsState()
 
   var isServiceStreaming by remember { mutableStateOf(ScreenCaptureService.isRunning) }
 
@@ -82,6 +90,7 @@ fun TargetScreen(
   LaunchedEffect(Unit) {
     while (true) {
       isServiceStreaming = ScreenCaptureService.isRunning
+      viewModel.checkSystemPermissions()
       kotlinx.coroutines.delay(1000)
     }
   }
@@ -284,6 +293,157 @@ fun TargetScreen(
             text = if (isActivelySharing) "Stop Screen Sharing" else "Start Screen Sharing",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
           )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Web Remote Controller Link Card (Browser Access)
+        Surface(
+          color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+          shape = RoundedCornerShape(16.dp),
+          border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.fillMaxWidth(),
+            ) {
+              Icon(
+                imageVector = Icons.Default.Link,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = "Web Remote Controller (No App Needed)",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+              )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+              text = "Open this URL in any browser on PC, tablet, or phone to view & navigate this device live:",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(
+              color = MaterialTheme.colorScheme.surface,
+              shape = RoundedCornerShape(8.dp),
+              border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+              modifier = Modifier.fillMaxWidth(),
+            ) {
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+              ) {
+                Text(
+                  text = viewModel.getWebShareUrl(),
+                  style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                  ),
+                  color = MaterialTheme.colorScheme.primary,
+                )
+              }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+              OutlinedButton(
+                onClick = { viewModel.copyWebLink(context) },
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f).height(40.dp),
+              ) {
+                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Copy", style = MaterialTheme.typography.bodySmall)
+              }
+              OutlinedButton(
+                onClick = { viewModel.shareWebLink(context) },
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f).height(40.dp),
+              ) {
+                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Share", style = MaterialTheme.typography.bodySmall)
+              }
+              Button(
+                onClick = { viewModel.openWebRemoteInBrowser(context) },
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.weight(1f).height(40.dp),
+              ) {
+                Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Open", style = MaterialTheme.typography.bodySmall)
+              }
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Interaction Service (Accessibility) Status Card
+        Surface(
+          color = if (isAccessibilityGranted) StreamConnectedGreen.copy(alpha = 0.1f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f),
+          shape = RoundedCornerShape(14.dp),
+          border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = if (isAccessibilityGranted) StreamConnectedGreen.copy(alpha = 0.4f) else MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
+          ),
+          modifier = Modifier.fillMaxWidth(),
+        ) {
+          Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              modifier = Modifier.fillMaxWidth(),
+            ) {
+              Icon(
+                imageVector = if (isAccessibilityGranted) Icons.Default.CheckCircle else Icons.Default.Warning,
+                contentDescription = null,
+                tint = if (isAccessibilityGranted) StreamConnectedGreen else MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(18.dp),
+              )
+              Spacer(modifier = Modifier.width(8.dp))
+              Text(
+                text = if (isAccessibilityGranted) "Remote Gestures Active" else "Interaction Service Disabled",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = if (isAccessibilityGranted) StreamConnectedGreen else MaterialTheme.colorScheme.error,
+              )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+              text = if (isAccessibilityGranted)
+                "Accessibility service is running. Remote taps, swipes, and navigation will execute on this phone."
+              else
+                "Required for remote clicks & navigation. Enable TwinControl in Android Accessibility Settings.",
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (!isAccessibilityGranted) {
+              Spacer(modifier = Modifier.height(8.dp))
+              Button(
+                onClick = { viewModel.openAccessibilitySettings(context) },
+                colors = ButtonDefaults.buttonColors(
+                  containerColor = MaterialTheme.colorScheme.error,
+                  contentColor = MaterialTheme.colorScheme.onError,
+                ),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth().height(42.dp),
+              ) {
+                Icon(Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Enable Interaction Service", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+              }
+            }
+          }
         }
       }
 

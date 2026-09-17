@@ -55,7 +55,7 @@ enum class TwinNavigationTab {
 fun TwinBottomNavBar(
   currentTab: TwinNavigationTab,
   onTabSelected: (TwinNavigationTab) -> Unit,
-  appMode: AppMode = AppMode.CONTROLLER,
+  appMode: AppMode = AppMode.TARGET,
   hasLiveConnection: Boolean = true,
   modifier: Modifier = Modifier,
 ) {

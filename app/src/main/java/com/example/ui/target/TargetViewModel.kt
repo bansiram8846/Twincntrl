@@ -140,6 +140,42 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
     return "http://$ip:${TwinProtocol.WEB_PORT}/"
   }
 
+  fun copyWebLink(ctx: Context) {
+    val url = getWebShareUrl()
+    try {
+      val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+      val clip = android.content.ClipData.newPlainText("TwinControl Web Link", url)
+      clipboard.setPrimaryClip(clip)
+      android.widget.Toast.makeText(ctx, "Link copied: $url", android.widget.Toast.LENGTH_SHORT).show()
+    } catch (_: Exception) {}
+  }
+
+  fun openWebRemoteInBrowser(ctx: Context) {
+    val url = getWebShareUrl()
+    try {
+      val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+      }
+      ctx.startActivity(intent)
+    } catch (_: Exception) {}
+  }
+
+  fun openAccessibilitySettings(ctx: Context) {
+    try {
+      val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+      }
+      ctx.startActivity(intent)
+    } catch (_: Exception) {
+      try {
+        val fallback = Intent("android.settings.ACCESSIBILITY_SETTINGS").apply {
+          flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        ctx.startActivity(fallback)
+      } catch (_: Exception) {}
+    }
+  }
+
   fun shareWebLink(ctx: Context) {
     val url = getWebShareUrl()
     val sendIntent = Intent().apply {
@@ -235,8 +271,8 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
   }
 
   fun checkSystemPermissions() {
-    _isAccessibilityGranted.value = true
-    _isMediaProjectionGranted.value = true
+    _isAccessibilityGranted.value = RemoteAccessibilityService.isRunning
+    _isMediaProjectionGranted.value = ScreenCaptureService.isRunning
   }
 
   private fun startExpiryTimer() {
