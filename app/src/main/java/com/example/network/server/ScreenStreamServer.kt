@@ -2,7 +2,13 @@ package com.example.network.server
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.view.PixelCopy
 import com.example.MainActivity
 import com.example.network.protocol.TwinProtocol
 import com.example.service.ScreenCaptureService
@@ -42,6 +48,10 @@ class ScreenStreamServer {
   @Volatile
   private var lastFrameHeight: Int = 1280
 
+  @Volatile
+  private var cachedStandbyFrame: ByteArray? = null
+  private val mainHandler = Handler(Looper.getMainLooper())
+
   fun start() {
     if (serverSocket != null && !serverSocket!!.isClosed && listenJob?.isActive == true) {
       Log.i(TAG, "ScreenStreamServer already listening on port ${TwinProtocol.STREAM_PORT}")
@@ -56,24 +66,26 @@ class ScreenStreamServer {
         Log.i(TAG, "ScreenStreamServer listening on port ${TwinProtocol.STREAM_PORT}")
 
         while (isActive) {
-          val client = server.accept()
-          client.tcpNoDelay = true
-          client.sendBufferSize = 256 * 1024
-          activeClients.add(client)
-          Log.i(TAG, "New stream client connected: ${client.inetAddress.hostAddress}")
+          try {
+            val client = server.accept()
+            client.tcpNoDelay = true
+            client.sendBufferSize = 256 * 1024
+            activeClients.add(client)
+            Log.i(TAG, "New stream client connected: ${client.inetAddress.hostAddress}")
 
-          // Immediately deliver the latest cached frame so the controller displays the target screen instantly
-          val cachedBytes = lastFramePayload
-          if (cachedBytes != null) {
+            // Immediately deliver the latest cached frame or standby frame so controller receives immediate display
+            val initialBytes = lastFramePayload ?: getOrCreateStandbyFrame(720, 1280)
             scope.launch {
-              sendFrameToClient(client, cachedBytes, lastFrameWidth, lastFrameHeight)
+              sendFrameToClient(client, initialBytes, lastFrameWidth, lastFrameHeight)
             }
-          }
 
-          startCaptureLoop()
+            startCaptureLoop()
+          } catch (e: Exception) {
+            if (!isActive) break
+          }
         }
-      } catch (e: Exception) {
-        if (isActive) Log.e(TAG, "Stream server socket error: ${e.message}")
+      } catch (t: Throwable) {
+        if (isActive) Log.e(TAG, "Stream server socket error: ${t.message}")
       }
     }
   }
@@ -82,52 +94,131 @@ class ScreenStreamServer {
     if (captureLoopJob?.isActive == true) return
     captureLoopJob = scope.launch {
       while (isActive && activeClients.isNotEmpty()) {
-        if (!ScreenCaptureService.isRunning) {
-          captureAndBroadcastCurrentTargetScreen()
+        try {
+          if (!ScreenCaptureService.isRunning) {
+            captureAndBroadcastCurrentTargetScreen()
+          }
+        } catch (t: Throwable) {
+          Log.w(TAG, "Safe capture loop exception: ${t.message}")
         }
         delay(66) // ~15 FPS smooth stream
       }
+      captureLoopJob = null
     }
   }
 
   private fun captureAndBroadcastCurrentTargetScreen() {
-    val activity = MainActivity.currentActivity ?: return
-    if (activity.isFinishing || activity.isDestroyed) return
+    val activity = MainActivity.currentActivity
+    if (activity == null || activity.isFinishing || activity.isDestroyed) {
+      val standby = getOrCreateStandbyFrame(720, 1280)
+      broadcastFrame(standby, 720, 1280)
+      return
+    }
 
-    val decorView = activity.window.decorView
+    val window = try { activity.window } catch (_: Throwable) { null }
+    val decorView = window?.peekDecorView()
+    if (window == null || decorView == null || !decorView.isAttachedToWindow) {
+      val standby = getOrCreateStandbyFrame(720, 1280)
+      broadcastFrame(standby, 720, 1280)
+      return
+    }
+
     val width = decorView.width
     val height = decorView.height
-    if (width <= 0 || height <= 0) return
+    if (width <= 0 || height <= 0) {
+      val standby = getOrCreateStandbyFrame(720, 1280)
+      broadcastFrame(standby, 720, 1280)
+      return
+    }
 
     val scale = (720f / width.toFloat()).coerceAtMost(1f)
     val targetWidth = (width * scale).toInt().coerceAtLeast(1)
     val targetHeight = (height * scale).toInt().coerceAtLeast(1)
 
-    try {
-      val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
-      val canvas = Canvas(bitmap)
-      canvas.scale(scale, scale)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      try {
+        val bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+        val latch = CountDownLatch(1)
+        var copySuccess = false
 
-      val latch = CountDownLatch(1)
-      activity.runOnUiThread {
-        try {
-          decorView.draw(canvas)
-        } catch (e: Exception) {
-          Log.d(TAG, "Draw error: ${e.message}")
-        } finally {
-          latch.countDown()
+        PixelCopy.request(
+          window,
+          bitmap,
+          { result ->
+            copySuccess = (result == PixelCopy.SUCCESS)
+            latch.countDown()
+          },
+          mainHandler
+        )
+
+        val completed = latch.await(100, TimeUnit.MILLISECONDS)
+        if (completed && copySuccess && !bitmap.isRecycled) {
+          val baos = ByteArrayOutputStream()
+          bitmap.compress(Bitmap.CompressFormat.JPEG, 70, baos)
+          val bytes = baos.toByteArray()
+          broadcastFrame(bytes, targetWidth, targetHeight)
+          bitmap.recycle()
+        } else if (completed) {
+          if (!bitmap.isRecycled) bitmap.recycle()
+          val standby = getOrCreateStandbyFrame(targetWidth, targetHeight)
+          broadcastFrame(standby, targetWidth, targetHeight)
+        } else {
+          // Timed out: do NOT recycle bitmap as PixelCopy may still complete writing asynchronously.
+          val standby = getOrCreateStandbyFrame(targetWidth, targetHeight)
+          broadcastFrame(standby, targetWidth, targetHeight)
         }
+      } catch (t: Throwable) {
+        Log.d(TAG, "Safe PixelCopy frame capture note: ${t.message}")
+        val standby = getOrCreateStandbyFrame(targetWidth, targetHeight)
+        broadcastFrame(standby, targetWidth, targetHeight)
       }
-      latch.await(80, TimeUnit.MILLISECONDS)
+    } else {
+      val standby = getOrCreateStandbyFrame(targetWidth, targetHeight)
+      broadcastFrame(standby, targetWidth, targetHeight)
+    }
+  }
+
+  private fun getOrCreateStandbyFrame(width: Int, height: Int): ByteArray {
+    cachedStandbyFrame?.let { return it }
+    return try {
+      val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+      val canvas = Canvas(bmp)
+      val bgPaint = Paint().apply { color = Color.rgb(15, 23, 42) }
+      canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
+
+      val titlePaint = Paint().apply {
+        color = Color.WHITE
+        textSize = 34f
+        isAntiAlias = true
+        textAlign = Paint.Align.CENTER
+      }
+      val subPaint = Paint().apply {
+        color = Color.rgb(148, 163, 184)
+        textSize = 22f
+        isAntiAlias = true
+        textAlign = Paint.Align.CENTER
+      }
+      val accentPaint = Paint().apply {
+        color = Color.rgb(34, 197, 94)
+        textSize = 24f
+        isAntiAlias = true
+        textAlign = Paint.Align.CENTER
+      }
+
+      val centerY = height / 2f
+      canvas.drawText("TwinControl Target Connected", width / 2f, centerY - 50f, titlePaint)
+      canvas.drawText("• Remote Control Link Active •", width / 2f, centerY, accentPaint)
+      canvas.drawText("Tap 'Start Screen Sharing' on target device", width / 2f, centerY + 50f, subPaint)
+      canvas.drawText("for full live screen mirroring", width / 2f, centerY + 85f, subPaint)
 
       val baos = ByteArrayOutputStream()
-      bitmap.compress(Bitmap.CompressFormat.JPEG, 75, baos)
+      bmp.compress(Bitmap.CompressFormat.JPEG, 75, baos)
       val bytes = baos.toByteArray()
-      bitmap.recycle()
-
-      broadcastFrame(bytes, targetWidth, targetHeight)
-    } catch (e: Exception) {
-      Log.d(TAG, "Frame capture error: ${e.message}")
+      bmp.recycle()
+      cachedStandbyFrame = bytes
+      bytes
+    } catch (_: Throwable) {
+      ByteArray(0)
     }
   }
 
@@ -137,16 +228,17 @@ class ScreenStreamServer {
     captureLoopJob?.cancel()
     captureLoopJob = null
     for (client in activeClients) {
-      try { client.close() } catch (_: Exception) {}
+      try { client.close() } catch (_: Throwable) {}
     }
     activeClients.clear()
     try {
       serverSocket?.close()
       serverSocket = null
-    } catch (_: Exception) {}
+    } catch (_: Throwable) {}
   }
 
   fun broadcastFrame(jpegBytes: ByteArray, width: Int, height: Int) {
+    if (jpegBytes.isEmpty()) return
     lastFramePayload = jpegBytes
     lastFrameWidth = width
     lastFrameHeight = height
@@ -183,9 +275,9 @@ class ScreenStreamServer {
       dos.writeInt(jpegBytes.size)
       dos.write(jpegBytes)
       dos.flush()
-    } catch (e: Exception) {
+    } catch (e: Throwable) {
       Log.d(TAG, "Client dropped during frame transmit: ${e.message}")
-      try { client.close() } catch (_: Exception) {}
+      try { client.close() } catch (_: Throwable) {}
       activeClients.remove(client)
     }
   }

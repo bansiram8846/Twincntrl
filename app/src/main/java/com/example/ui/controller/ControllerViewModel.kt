@@ -302,15 +302,18 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     val pixelY = normY * displayH
     _lastTouchCoordinate.value = Pair(pixelX, pixelY)
 
+    val action = when (_gestureMode.value) {
+      GestureMode.TAP -> "TAP"
+      GestureMode.LONG_PRESS -> "LONG_PRESS"
+      GestureMode.SWIPE -> "SWIPE_UP"
+      GestureMode.SCROLL -> "SCROLL_DOWN"
+    }
+
     if (controllerClient.isConnected) {
-      val action = when (_gestureMode.value) {
-        GestureMode.TAP -> "TAP"
-        GestureMode.LONG_PRESS -> "LONG_PRESS"
-        GestureMode.SWIPE -> "SWIPE_UP"
-        GestureMode.SCROLL -> "SCROLL_DOWN"
-      }
       controllerClient.sendTouch(normX, normY, action)
       addLog("Input Dispatched", "${_gestureMode.value} at (${pixelX.toInt()}, ${pixelY.toInt()})")
+    } else {
+      addLog("Input Dispatched", "${_gestureMode.value} at (${pixelX.toInt()}, ${pixelY.toInt()}) [Target offline]")
     }
   }
 
@@ -324,13 +327,15 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     if (controllerClient.isConnected) {
       controllerClient.sendTouch(normX, normY, action)
       addLog("Input Dispatched", "$action at (${pixelX.toInt()}, ${pixelY.toInt()})")
+    } else {
+      addLog("Input Dispatched", "$action at (${pixelX.toInt()}, ${pixelY.toInt()}) [Target offline]")
     }
   }
 
   fun sendQuickGesture(gesture: String) {
+    val centerX = 0.5f
+    val centerY = 0.5f
     if (controllerClient.isConnected) {
-      val centerX = 0.5f
-      val centerY = 0.5f
       when (gesture) {
         "SWIPE_UP" -> controllerClient.sendSwipe(centerX, 0.75f, centerX, 0.25f, 250L)
         "SWIPE_DOWN" -> controllerClient.sendSwipe(centerX, 0.25f, centerX, 0.75f, 250L)
@@ -340,6 +345,8 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
         "SCROLL_DOWN" -> controllerClient.sendTouch(centerX, centerY, "SCROLL_DOWN")
       }
       addLog("Gesture Action", "Triggered $gesture on Target")
+    } else {
+      addLog("Gesture Action", "Triggered $gesture [Target offline]")
     }
   }
 
@@ -347,6 +354,8 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     if (controllerClient.isConnected) {
       controllerClient.sendSwipe(startX, startY, endX, endY, durationMs)
       addLog("Swipe Dispatched", "Dispatched drag/swipe on Target")
+    } else {
+      addLog("Swipe Dispatched", "Drag/swipe recorded [Target offline]")
     }
   }
 
@@ -354,13 +363,19 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     if (controllerClient.isConnected) {
       controllerClient.sendNavigation(commandType)
       addLog("Navigation", "Dispatched ${commandType.name} action to Target")
+    } else {
+      addLog("Navigation", "Dispatched ${commandType.name} [Target offline]")
     }
   }
 
   fun sendTextInput(text: String) {
-    if (text.isNotBlank() && controllerClient.isConnected) {
-      controllerClient.sendTextInput(text)
-      addLog("Text Input", "Injected text: \"$text\" into focused field")
+    if (text.isNotBlank()) {
+      if (controllerClient.isConnected) {
+        controllerClient.sendTextInput(text)
+        addLog("Text Input", "Injected text: \"$text\" into focused field")
+      } else {
+        addLog("Text Input", "Injected text: \"$text\" [Target offline]")
+      }
     }
   }
 
@@ -368,6 +383,8 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     if (controllerClient.isConnected) {
       controllerClient.sendGlobalAction(action)
       addLog("System Action", "Dispatched $action to Target")
+    } else {
+      addLog("System Action", "Dispatched $action [Target offline]")
     }
   }
 
@@ -375,6 +392,8 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     if (controllerClient.isConnected) {
       controllerClient.sendVolume(direction)
       addLog("Volume Action", "Volume $direction dispatched")
+    } else {
+      addLog("Volume Action", "Volume $direction [Target offline]")
     }
   }
 

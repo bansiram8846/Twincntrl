@@ -1,5 +1,6 @@
 package com.example.ui.controller
 
+import android.graphics.Bitmap
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -44,6 +45,10 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Notifications
@@ -97,8 +102,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -118,6 +125,41 @@ import com.example.ui.theme.StreamConnectedGreen
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private fun mapCanvasTouchToTarget(
+  touchX: Float,
+  touchY: Float,
+  boxWidth: Float,
+  boxHeight: Float,
+  bitmap: Bitmap?,
+): Pair<Float, Float> {
+  if (bitmap == null || boxWidth <= 0f || boxHeight <= 0f) {
+    return Pair(
+      (touchX / boxWidth.coerceAtLeast(1f)).coerceIn(0f, 1f),
+      (touchY / boxHeight.coerceAtLeast(1f)).coerceIn(0f, 1f),
+    )
+  }
+  val bmpW = bitmap.width.toFloat().coerceAtLeast(1f)
+  val bmpH = bitmap.height.toFloat().coerceAtLeast(1f)
+  val bmpAspect = bmpW / bmpH
+  val boxAspect = boxWidth / boxHeight.coerceAtLeast(1f)
+
+  val (drawnW, drawnH, ox, oy) = if (boxAspect > bmpAspect) {
+    val dh = boxHeight
+    val dw = boxHeight * bmpAspect
+    val offX = (boxWidth - dw) / 2f
+    listOf(dw, dh, offX, 0f)
+  } else {
+    val dw = boxWidth
+    val dh = boxWidth / bmpAspect
+    val offY = (boxHeight - dh) / 2f
+    listOf(dw, dh, 0f, offY)
+  }
+
+  val normX = ((touchX - ox) / drawnW.coerceAtLeast(1f)).coerceIn(0f, 1f)
+  val normY = ((touchY - oy) / drawnH.coerceAtLeast(1f)).coerceIn(0f, 1f)
+  return Pair(normX, normY)
+}
 
 @Composable
 fun RemoteScreenView(
@@ -416,52 +458,60 @@ fun RemoteScreenView(
             .weight(1f)
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .pointerInput(gestureMode) {
-              if (gestureMode == GestureMode.SWIPE || gestureMode == GestureMode.SCROLL) {
-                var startX = 0f
-                var startY = 0f
-                var currentX = 0f
-                var currentY = 0f
-                detectDragGestures(
-                  onDragStart = { offset ->
-                    startX = (offset.x / size.width).coerceIn(0f, 1f)
-                    startY = (offset.y / size.height).coerceIn(0f, 1f)
-                    currentX = startX
-                    currentY = startY
-                  },
-                  onDrag = { change, _ ->
-                    change.consume()
-                    currentX = (change.position.x / size.width).coerceIn(0f, 1f)
-                    currentY = (change.position.y / size.height).coerceIn(0f, 1f)
-                  },
-                  onDragEnd = {
-                    val dx = currentX - startX
-                    val dy = currentY - startY
-                    if (kotlin.math.hypot(dx, dy) > 0.03f) {
-                      viewModel.onScreenSwiped(startX, startY, currentX, currentY, 280L)
-                    } else {
-                      if (gestureMode == GestureMode.SCROLL) {
-                        viewModel.sendQuickGesture("SCROLL_DOWN")
-                      } else {
-                        viewModel.sendQuickGesture("SWIPE_UP")
-                      }
+            .pointerInput(gestureMode, remoteScreenBitmap) {
+              detectTapGestures(
+                onTap = { offset ->
+                  val (normX, normY) = mapCanvasTouchToTarget(offset.x, offset.y, size.width.toFloat(), size.height.toFloat(), remoteScreenBitmap)
+                  when (gestureMode) {
+                    GestureMode.LONG_PRESS -> viewModel.sendTouchWithAction(normX, normY, "LONG_PRESS")
+                    GestureMode.SCROLL -> viewModel.sendTouchWithAction(normX, normY, "SCROLL_DOWN")
+                    else -> viewModel.onScreenTouched(normX, normY)
+                  }
+                },
+                onLongPress = { offset ->
+                  val (normX, normY) = mapCanvasTouchToTarget(offset.x, offset.y, size.width.toFloat(), size.height.toFloat(), remoteScreenBitmap)
+                  viewModel.sendTouchWithAction(normX, normY, "LONG_PRESS")
+                }
+              )
+            }
+            .pointerInput(gestureMode, remoteScreenBitmap) {
+              var startNormX = 0f
+              var startNormY = 0f
+              var currentNormX = 0f
+              var currentNormY = 0f
+              var dragStartTime = 0L
+
+              detectDragGestures(
+                onDragStart = { offset ->
+                  dragStartTime = System.currentTimeMillis()
+                  val (nx, ny) = mapCanvasTouchToTarget(offset.x, offset.y, size.width.toFloat(), size.height.toFloat(), remoteScreenBitmap)
+                  startNormX = nx
+                  startNormY = ny
+                  currentNormX = nx
+                  currentNormY = ny
+                },
+                onDrag = { change, _ ->
+                  change.consume()
+                  val (nx, ny) = mapCanvasTouchToTarget(change.position.x, change.position.y, size.width.toFloat(), size.height.toFloat(), remoteScreenBitmap)
+                  currentNormX = nx
+                  currentNormY = ny
+                },
+                onDragEnd = {
+                  val dx = currentNormX - startNormX
+                  val dy = currentNormY - startNormY
+                  val dist = kotlin.math.hypot(dx, dy)
+                  val duration = (System.currentTimeMillis() - dragStartTime).coerceIn(80L, 800L)
+                  if (dist > 0.02f) {
+                    viewModel.onScreenSwiped(startNormX, startNormY, currentNormX, currentNormY, duration)
+                  } else {
+                    if (gestureMode == GestureMode.SCROLL) {
+                      viewModel.sendQuickGesture("SCROLL_DOWN")
+                    } else if (gestureMode == GestureMode.SWIPE) {
+                      viewModel.sendQuickGesture("SWIPE_UP")
                     }
                   }
-                )
-              } else {
-                detectTapGestures(
-                  onTap = { offset ->
-                    val normX = (offset.x / size.width).coerceIn(0f, 1f)
-                    val normY = (offset.y / size.height).coerceIn(0f, 1f)
-                    viewModel.onScreenTouched(normX, normY)
-                  },
-                  onLongPress = { offset ->
-                    val normX = (offset.x / size.width).coerceIn(0f, 1f)
-                    val normY = (offset.y / size.height).coerceIn(0f, 1f)
-                    viewModel.sendTouchWithAction(normX, normY, "LONG_PRESS")
-                  }
-                )
-              }
+                }
+              )
             },
         ) {
           if (remoteScreenBitmap != null) {
@@ -772,28 +822,28 @@ fun RemoteScreenView(
 
               GestureModeChip(
                 label = "Swipe Up",
-                icon = Icons.Default.PlayArrow,
+                icon = Icons.Default.KeyboardArrowUp,
                 selected = false,
                 onClick = { viewModel.sendQuickGesture("SWIPE_UP") },
               )
 
               GestureModeChip(
                 label = "Swipe Down",
-                icon = Icons.Default.ArrowDropDown,
+                icon = Icons.Default.KeyboardArrowDown,
                 selected = false,
                 onClick = { viewModel.sendQuickGesture("SWIPE_DOWN") },
               )
 
               GestureModeChip(
                 label = "Swipe Left",
-                icon = Icons.Default.ArrowBackIosNew,
+                icon = Icons.Default.KeyboardArrowLeft,
                 selected = false,
                 onClick = { viewModel.sendQuickGesture("SWIPE_LEFT") },
               )
 
               GestureModeChip(
                 label = "Swipe Right",
-                icon = Icons.Default.PlayArrow,
+                icon = Icons.Default.KeyboardArrowRight,
                 selected = false,
                 onClick = { viewModel.sendQuickGesture("SWIPE_RIGHT") },
               )
@@ -1006,15 +1056,24 @@ private fun GestureModeChip(
   icon: ImageVector,
   selected: Boolean,
   onClick: () -> Unit,
+  modifier: Modifier = Modifier,
 ) {
+  val haptic = LocalHapticFeedback.current
+  val tag = "gesture_mode_" + label.lowercase().replace(" ", "_")
   Surface(
+    onClick = {
+      try {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+      } catch (_: Exception) {}
+      onClick()
+    },
     color = if (selected) ActivePillBlue else MaterialTheme.colorScheme.surfaceContainer,
     shape = RoundedCornerShape(12.dp),
     border = if (!selected) androidx.compose.foundation.BorderStroke(
       1.dp,
       MaterialTheme.colorScheme.outlineVariant,
     ) else null,
-    modifier = Modifier.clickable(onClick = onClick),
+    modifier = modifier.testTag(tag),
   ) {
     Row(
       modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
@@ -1022,7 +1081,7 @@ private fun GestureModeChip(
     ) {
       Icon(
         imageVector = icon,
-        contentDescription = null,
+        contentDescription = label,
         tint = if (selected) ActivePillBlueText else MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.size(15.dp),
       )
@@ -1045,14 +1104,25 @@ private fun VisualRemoteActionTile(
   onClick: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
+  val haptic = LocalHapticFeedback.current
+  val tag = "remote_action_" + label.lowercase()
+    .replace(" ", "_")
+    .replace("+", "plus")
+    .replace("-", "minus")
   Surface(
+    onClick = {
+      try {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+      } catch (_: Exception) {}
+      onClick()
+    },
     color = MaterialTheme.colorScheme.surfaceContainer,
     shape = RoundedCornerShape(14.dp),
     border = androidx.compose.foundation.BorderStroke(
       1.dp,
       MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
     ),
-    modifier = modifier.clickable(onClick = onClick),
+    modifier = modifier.testTag(tag),
   ) {
     Column(
       modifier = Modifier

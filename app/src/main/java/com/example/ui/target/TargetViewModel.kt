@@ -229,15 +229,23 @@ class TargetViewModel(application: Application) : AndroidViewModel(application) 
   init {
     controlServer.onControllerAuthorized = { name ->
       viewModelScope.launch {
-        _authorizedControllerName.value = name
-        _isRemoteControlActive.value = true
-        ScreenStreamServer.instance.startCaptureLoop()
+        try {
+          _authorizedControllerName.value = name
+          _isRemoteControlActive.value = true
+          ScreenStreamServer.instance.startCaptureLoop()
+        } catch (t: Throwable) {
+          Log.e("TargetViewModel", "Error in onControllerAuthorized: ${t.message}")
+        }
       }
     }
     controlServer.onControllerDisconnected = {
       viewModelScope.launch {
-        _isRemoteControlActive.value = false
-        _authorizedControllerName.value = "None"
+        try {
+          _isRemoteControlActive.value = false
+          _authorizedControllerName.value = "None"
+        } catch (t: Throwable) {
+          Log.e("TargetViewModel", "Error in onControllerDisconnected: ${t.message}")
+        }
       }
     }
     controlServer.onCommandReceived = { _, _ -> }
