@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -35,110 +36,124 @@ import com.example.ui.target.TargetViewModel
 
 @Composable
 fun TwinControlApp(
-  controllerViewModel: ControllerViewModel = viewModel(),
-  targetViewModel: TargetViewModel = viewModel(),
+    controllerViewModel: ControllerViewModel = viewModel(),
+    targetViewModel: TargetViewModel = viewModel(),
 ) {
-  var appMode by remember { mutableStateOf(AppMode.TARGET) }
-  var currentTab by remember { mutableStateOf(TwinNavigationTab.HOME) }
-  var isPairingSheetOpen by remember { mutableStateOf(false) }
+    var appMode by remember { mutableStateOf(AppMode.CONTROLLER) }
+    var currentTab by remember { mutableStateOf(TwinNavigationTab.HOME) }
+    var isPairingSheetOpen by remember { mutableStateOf(false) }
 
-  val pendingTargetLink by MainActivity.pendingTargetLink.collectAsState()
+    val pendingTargetLink by MainActivity.pendingTargetLink.collectAsState()
+    val connectionState by controllerViewModel.connectionState.collectAsState()
+    val isConnected = connectionState == ConnectionState.CONNECTED
 
-  // When launched from a Target invite link (deep link or web redirect)
-  LaunchedEffect(pendingTargetLink) {
-    pendingTargetLink?.let { payload ->
-      appMode = AppMode.TARGET
-      currentTab = TwinNavigationTab.HOME
-      targetViewModel.connectToControllerFromLink(payload.controllerIp, payload.controllerName)
-      MainActivity.pendingTargetLink.value = null
-    }
-  }
-
-  val connectionState by controllerViewModel.connectionState.collectAsState()
-  val isConnected = connectionState == ConnectionState.CONNECTED
-
-  Scaffold(
-    topBar = {
-      if (!isPairingSheetOpen && currentTab != TwinNavigationTab.REMOTE) {
-        TwinTopAppBar(
-          currentMode = appMode,
-          onModeChanged = { mode ->
-            appMode = mode
-            if (mode == AppMode.TARGET) {
-              currentTab = TwinNavigationTab.HOME
-            }
-          },
-          subtitle = if (appMode == AppMode.CONTROLLER) "Host #01 · TLS 1.3" else "Broadcasting on Local Subnet",
-        )
-      }
-    },
-    bottomBar = {
-      // Target mode is ultra-lightweight: NO bottom navigation bar, NO tabs, NO settings screens
-      if (appMode == AppMode.CONTROLLER && !isPairingSheetOpen) {
-        TwinBottomNavBar(
-          currentTab = currentTab,
-          onTabSelected = { tab ->
-            currentTab = tab
-          },
-          appMode = appMode,
-          hasLiveConnection = isConnected,
-        )
-      }
-    },
-    modifier = Modifier.fillMaxSize(),
-  ) { innerPadding ->
-    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-      if (isPairingSheetOpen) {
-        PairDeviceScreen(
-          viewModel = controllerViewModel,
-          onNavigateBack = { isPairingSheetOpen = false },
-          onSwitchToTargetMode = {
-            isPairingSheetOpen = false
+    // Handle deep link actions to drop automatically into Target pairing
+    LaunchedEffect(pendingTargetLink) {
+        pendingTargetLink?.let { payload ->
             appMode = AppMode.TARGET
             currentTab = TwinNavigationTab.HOME
-          },
-        )
-      } else {
-        AnimatedContent(
-          targetState = Pair(appMode, currentTab),
-          transitionSpec = { fadeIn() togetherWith fadeOut() },
-          label = "mode_tab_transition",
-        ) { (mode, tab) ->
-          if (mode == AppMode.TARGET) {
-            // Target mode is ultra lightweight: single focused screen, no settings or extra tabs
-            TargetScreen(
-              viewModel = targetViewModel,
-              onSwitchToControllerMode = {
-                appMode = AppMode.CONTROLLER
-                currentTab = TwinNavigationTab.HOME
-              },
-            )
-          } else {
-            when (tab) {
-              TwinNavigationTab.HOME -> ControllerHomeScreen(
-                viewModel = controllerViewModel,
-                onNavigateToRemote = { currentTab = TwinNavigationTab.REMOTE },
-                onNavigateToPair = { isPairingSheetOpen = true },
-              )
-              TwinNavigationTab.DEVICES -> DevicesScreen(
-                viewModel = controllerViewModel,
-                onNavigateToPair = { isPairingSheetOpen = true },
-              )
-              TwinNavigationTab.REMOTE -> RemoteScreenView(
-                viewModel = controllerViewModel,
-                onDisconnectClicked = {
-                  controllerViewModel.toggleConnection()
-                  currentTab = TwinNavigationTab.HOME
-                },
-              )
-              TwinNavigationTab.ACTIVITY -> ActivityScreen(
-                viewModel = controllerViewModel,
-              )
-              TwinNavigationTab.SETTINGS -> SettingsScreen()
-            }
-          }
+            targetViewModel.connectToControllerFromLink(payload.controllerIp, payload.controllerName)
+            MainActivity.pendingTargetLink.value = null
         }
-      }
     }
-  }
+
+    // Intercept hardware back button when views are nested
+    BackHandler(enabled = isPairingSheetOpen || currentTab == TwinNavigationTab.REMOTE) {
+        if (isPairingSheetOpen) {
+            isPairingSheetOpen = false
+        } else if (currentTab == TwinNavigationTab.REMOTE) {
+            currentTab = TwinNavigationTab.HOME
+        }
+    }
+
+    // Determine layout components parameters to avoid code redundancy
+    val showTopAppBar = !isPairingSheetOpen && currentTab != TwinNavigationTab.REMOTE
+    val showBottomAppBar = appMode == AppMode.CONTROLLER && !isPairingSheetOpen
+
+    Scaffold(
+        topBar = {
+            if (showTopAppBar) {
+                TwinTopAppBar(
+                    currentMode = appMode,
+                    onModeChanged = { mode ->
+                        appMode = mode
+                        if (mode == AppMode.TARGET) {
+                            currentTab = TwinNavigationTab.HOME
+                        }
+                    },
+                    subtitle = if (appMode == AppMode.CONTROLLER) "Host #01 · TLS 1.3" else "Broadcasting on Local Subnet",
+                )
+            }
+        },
+        bottomBar = {
+            if (showBottomAppBar) {
+                TwinBottomNavBar(
+                    currentTab = currentTab,
+                    onTabSelected = { currentTab = it },
+                    appMode = appMode,
+                    hasLiveConnection = isConnected,
+                )
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+    ) { innerPadding ->
+        // innerPadding consumed locally at Root edge layout box
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            if (isPairingSheetOpen) {
+                PairDeviceScreen(
+                    viewModel = controllerViewModel,
+                    onNavigateBack = { isPairingSheetOpen = false },
+                    onSwitchToTargetMode = {
+                        isPairingSheetOpen = false
+                        appMode = AppMode.TARGET
+                        currentTab = TwinNavigationTab.HOME
+                    },
+                )
+            } else {
+                AnimatedContent(
+                    targetState = Pair(appMode, currentTab),
+                    transitionSpec = { fadeIn() togetherWith fadeOut() },
+                    label = "mode_tab_transition",
+                    modifier = Modifier.fillMaxSize()
+                ) { (mode, tab) ->
+                    if (mode == AppMode.TARGET) {
+                        TargetScreen(
+                            viewModel = targetViewModel,
+                            onSwitchToControllerMode = {
+                                appMode = AppMode.CONTROLLER
+                                currentTab = TwinNavigationTab.HOME
+                            },
+                        )
+                    } else {
+                        when (tab) {
+                            TwinNavigationTab.HOME -> ControllerHomeScreen(
+                                viewModel = controllerViewModel,
+                                onNavigateToRemote = { currentTab = TwinNavigationTab.REMOTE },
+                                onNavigateToPair = { isPairingSheetOpen = true },
+                            )
+                            TwinNavigationTab.DEVICES -> DevicesScreen(
+                                viewModel = controllerViewModel,
+                                onNavigateToPair = { isPairingSheetOpen = true },
+                            )
+                            TwinNavigationTab.REMOTE -> RemoteScreenView(
+                                viewModel = controllerViewModel,
+                                onDisconnectClicked = {
+                                    controllerViewModel.toggleConnection()
+                                    currentTab = TwinNavigationTab.HOME
+                                },
+                            )
+                            TwinNavigationTab.ACTIVITY -> ActivityScreen(
+                                viewModel = controllerViewModel,
+                            )
+                            TwinNavigationTab.SETTINGS -> SettingsScreen()
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

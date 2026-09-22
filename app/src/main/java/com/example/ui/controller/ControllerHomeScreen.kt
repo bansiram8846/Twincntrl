@@ -557,247 +557,109 @@ fun ControllerHomeScreen(
           }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Bento Telemetry Grid
-        if (activeDevice != null) {
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-          ) {
-            TelemetryTile(
-              title = "BATTERY",
-              value = "${activeDevice!!.batteryPercent}%",
-              subtext = "Charging",
-              icon = Icons.Default.Bolt,
-              iconTint = MaterialTheme.colorScheme.secondary,
-              modifier = Modifier.weight(1f),
-            )
-            TelemetryTile(
-              title = "LATENCY",
-              value = "${telemetry.latencyMs}",
-              unit = "ms",
-              badge = if (telemetry.latencyMs < 30) "Low" else "Normal",
-              icon = Icons.Default.Speed,
-              iconTint = MaterialTheme.colorScheme.primary,
-              modifier = Modifier.weight(1f),
-            )
-          }
-
-          Spacer(modifier = Modifier.height(8.dp))
-
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-          ) {
-            TelemetryTile(
-              title = "WI-FI",
-              value = activeDevice!!.wifiSsid,
-              subtext = "Signal ${activeDevice!!.signalDbm} dBm",
-              icon = Icons.Default.Wifi,
-              iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-              modifier = Modifier.weight(1f),
-            )
-            TelemetryTile(
-              title = "STREAM",
-              value = "${telemetry.resolutionWidth}×${telemetry.resolutionHeight}",
-              subtext = "@ ${telemetry.fps} FPS ${telemetry.codec}",
-              icon = Icons.Default.Videocam,
-              iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-              modifier = Modifier.weight(1f),
-            )
-            TelemetryTile(
-              title = "MIRRORING",
-              value = if (telemetry.isMirroringActive) "Active" else "Idle",
-              icon = Icons.Default.ScreenShare,
-              iconTint = MaterialTheme.colorScheme.secondary,
-              showPip = true,
-              modifier = Modifier.weight(1f),
-            )
-          }
-        } else {
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-          ) {
-            TelemetryTile(
-              title = "CONTROLLER IP",
-              value = viewModel.localIpAddress,
-              subtext = "Port 8989",
-              icon = Icons.Default.PhoneAndroid,
-              iconTint = MaterialTheme.colorScheme.primary,
-              modifier = Modifier.weight(1f),
-            )
-            TelemetryTile(
-              title = "NETWORK",
-              value = viewModel.wifiSsid,
-              subtext = "Local Subnet",
-              icon = Icons.Default.Wifi,
-              iconTint = MaterialTheme.colorScheme.secondary,
-              modifier = Modifier.weight(1f),
-            )
-          }
-        }
-
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Action Buttons Row
-        if (activeDevice != null) {
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-          ) {
-            Button(
-              onClick = onNavigateToRemote,
-              shape = RoundedCornerShape(9999.dp),
-              colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-              ),
-              modifier = Modifier
-                .testTag("remote_screen_button")
-                .weight(1f)
-                .height(44.dp),
-            ) {
-              Icon(
-                imageVector = Icons.Default.SettingsRemote,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-              )
-              Spacer(modifier = Modifier.width(8.dp))
-              Text(
-                text = "Remote Screen",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-              )
-            }
-
-            OutlinedButton(
-              onClick = { viewModel.toggleConnection() },
-              shape = RoundedCornerShape(9999.dp),
-              colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = MaterialTheme.colorScheme.error,
-              ),
-              border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
-              ),
-              modifier = Modifier
-                .testTag("disconnect_button")
-                .height(44.dp),
-            ) {
-              Icon(
-                imageVector = if (connectionState == ConnectionState.CONNECTED) Icons.Default.LinkOff else Icons.Default.PowerSettingsNew,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-              )
-              Spacer(modifier = Modifier.width(6.dp))
-              Text(
-                text = if (connectionState == ConnectionState.CONNECTED) "Disconnect" else "Connect",
-                style = MaterialTheme.typography.labelLarge,
-              )
-            }
-          }
-        } else {
+        // Simple Action Buttons in Controller Mode
+        Column(
+          modifier = Modifier.fillMaxWidth(),
+          verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+          // 1. Primary Action: Remote Screen
           Button(
-            onClick = onNavigateToPair,
-            shape = RoundedCornerShape(9999.dp),
+            onClick = onNavigateToRemote,
+            shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
               containerColor = MaterialTheme.colorScheme.primary,
               contentColor = MaterialTheme.colorScheme.onPrimary,
             ),
             modifier = Modifier
-              .testTag("pair_target_button")
+              .testTag("remote_screen_button")
               .fillMaxWidth()
-              .height(44.dp),
+              .height(52.dp),
           ) {
             Icon(
-              imageVector = Icons.Default.QrCodeScanner,
-              contentDescription = null,
-              modifier = Modifier.size(18.dp),
+              imageVector = Icons.Default.SettingsRemote,
+              contentDescription = "Remote Screen",
+              modifier = Modifier.size(22.dp),
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
-              text = "Pair New Target Device",
-              style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+              text = if (activeDevice != null) "Control ${activeDevice!!.name}" else "Open Remote Screen",
+              style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
             )
           }
-        }
-      }
-    }
 
-    // 3. Quick Tools Row
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-      Text(
-        text = "QUICK TOOLS",
-        style = MaterialTheme.typography.labelMedium.copy(
-          fontWeight = FontWeight.SemiBold,
-          letterSpacing = 1.sp,
-        ),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 4.dp),
-      )
-
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        // Pair New Device Pill
-        Surface(
-          color = MaterialTheme.colorScheme.secondaryContainer,
-          shape = RoundedCornerShape(9999.dp),
-          modifier = Modifier
-            .testTag("pair_new_device_button")
-            .clickable(onClick = onNavigateToPair),
-        ) {
+          // 2. Secondary Row: Pair Device & Share Target Link
           Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
           ) {
-            Icon(
-              imageVector = Icons.Default.Add,
-              contentDescription = null,
-              tint = MaterialTheme.colorScheme.onSecondaryContainer,
-              modifier = Modifier.size(18.dp),
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Icon(
-              imageVector = Icons.Default.QrCodeScanner,
-              contentDescription = null,
-              tint = MaterialTheme.colorScheme.onSecondaryContainer,
-              modifier = Modifier.size(18.dp),
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-              text = "Pair New Device",
-              style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-              color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
+            OutlinedButton(
+              onClick = onNavigateToPair,
+              shape = RoundedCornerShape(14.dp),
+              modifier = Modifier
+                .testTag("pair_target_button")
+                .weight(1f)
+                .height(46.dp),
+            ) {
+              Icon(
+                imageVector = Icons.Default.QrCodeScanner,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = "Pair Device",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+              )
+            }
+
+            OutlinedButton(
+              onClick = { showTargetLinkDialog = true },
+              shape = RoundedCornerShape(14.dp),
+              modifier = Modifier
+                .testTag("share_target_link_button")
+                .weight(1f)
+                .height(46.dp),
+            ) {
+              Icon(
+                imageVector = Icons.Default.Share,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = "Share Link",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+              )
+            }
+          }
+
+          // 3. Disconnect button (shown when a target is active)
+          if (activeDevice != null) {
+            TextButton(
+              onClick = { viewModel.toggleConnection() },
+              colors = ButtonDefaults.textButtonColors(
+                contentColor = MaterialTheme.colorScheme.error,
+              ),
+              modifier = Modifier
+                .testTag("disconnect_button")
+                .fillMaxWidth()
+                .height(40.dp),
+            ) {
+              Icon(
+                imageVector = if (connectionState == ConnectionState.CONNECTED) Icons.Default.LinkOff else Icons.Default.PowerSettingsNew,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = if (connectionState == ConnectionState.CONNECTED) "Disconnect from ${activeDevice!!.name}" else "Reconnect",
+                style = MaterialTheme.typography.labelMedium,
+              )
+            }
           }
         }
-
-        // Wake on LAN Pill
-        QuickToolPill(
-          icon = Icons.Default.PowerSettingsNew,
-          label = "Wake on LAN",
-          iconTint = MaterialTheme.colorScheme.primary,
-        )
-
-        // Audio Cast Pill
-        QuickToolPill(
-          icon = Icons.Default.VolumeUp,
-          label = "Audio Cast",
-          iconTint = MaterialTheme.colorScheme.secondary,
-        )
-
-        // Clipboard Sync Pill
-        QuickToolPill(
-          icon = Icons.Default.ContentPaste,
-          label = "Sync Clipboard",
-          iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
       }
     }
 
@@ -914,93 +776,7 @@ fun ControllerHomeScreen(
       }
     }
 
-    // 4. Recent Paired Devices Section
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(horizontal = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-      ) {
-        Text(
-          text = "Recent Paired Devices",
-          style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-          color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-          text = "See all",
-          style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-          color = MaterialTheme.colorScheme.primary,
-          modifier = Modifier.clickable { /* See all */ },
-        )
-      }
-
-      recentDevices.drop(1).forEach { device ->
-        RecentDeviceCard(
-          device = device,
-          onConnectClicked = { viewModel.connectSilently(device) },
-        )
-      }
-    }
-
-    // 5. Session Diagnostics Snippet
-    Surface(
-      color = MaterialTheme.colorScheme.surface,
-      shape = RoundedCornerShape(18.dp),
-      border = androidx.compose.foundation.BorderStroke(
-        1.dp,
-        MaterialTheme.colorScheme.outlineVariant,
-      ),
-      modifier = Modifier.fillMaxWidth(),
-    ) {
-      Row(
-        modifier = Modifier.padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-      ) {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          modifier = Modifier.weight(1f),
-        ) {
-          Box(
-            modifier = Modifier
-              .size(36.dp)
-              .clip(CircleShape)
-              .background(MaterialTheme.colorScheme.surfaceContainer),
-            contentAlignment = Alignment.Center,
-          ) {
-            Icon(
-              imageVector = Icons.Default.VerifiedUser,
-              contentDescription = null,
-              tint = MaterialTheme.colorScheme.primary,
-              modifier = Modifier.size(20.dp),
-            )
-          }
-          Spacer(modifier = Modifier.width(12.dp))
-          Column {
-            Text(
-              text = "End-to-End P2P Encrypted",
-              style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-              color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-              text = "Noise Protocol Framework · TLS 1.3 Direct Socket",
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-          }
-        }
-        Icon(
-          imageVector = Icons.Default.ChevronRight,
-          contentDescription = null,
-          tint = MaterialTheme.colorScheme.onSurfaceVariant,
-          modifier = Modifier.size(22.dp),
-        )
-      }
-    }
-
-    Spacer(modifier = Modifier.height(60.dp))
+    Spacer(modifier = Modifier.height(30.dp))
   }
 
   // Device Hardware & Dynamic Detection Dialog

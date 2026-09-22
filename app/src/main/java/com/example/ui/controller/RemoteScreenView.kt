@@ -172,6 +172,7 @@ fun RemoteScreenView(
   val gestureMode by viewModel.gestureMode.collectAsState()
   val lastTouch by viewModel.lastTouchCoordinate.collectAsState()
   val remoteScreenBitmap by viewModel.remoteScreenBitmap.collectAsState()
+  val lastFeedback by viewModel.lastActionFeedback.collectAsState()
 
   var showTextInputDialog by remember { mutableStateOf(false) }
   var textInputContent by remember { mutableStateOf("") }
@@ -757,6 +758,34 @@ fun RemoteScreenView(
         modifier = Modifier.padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {
+        // Live Feedback Banner
+        if (lastFeedback != null) {
+          Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth(),
+          ) {
+            Row(
+              modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.Center,
+            ) {
+              Icon(
+                imageVector = Icons.Default.Bolt,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(16.dp),
+              )
+              Spacer(modifier = Modifier.width(6.dp))
+              Text(
+                text = lastFeedback!!,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+              )
+            }
+          }
+        }
+
         // Section: Gesture Mode Selector
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
           Text(

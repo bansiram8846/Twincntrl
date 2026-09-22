@@ -290,9 +290,16 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     }
   }
 
+  private val _lastActionFeedback = MutableStateFlow<String?>(null)
+  val lastActionFeedback: StateFlow<String?> = _lastActionFeedback.asStateFlow()
+
   fun setGestureMode(mode: GestureMode) {
     _gestureMode.value = mode
     addLog("Gesture Mode", "Switched mode to ${mode.name}")
+    _lastActionFeedback.value = "Mode: ${mode.name}"
+    try {
+      android.widget.Toast.makeText(context, "Gesture Mode: ${mode.name}", android.widget.Toast.LENGTH_SHORT).show()
+    } catch (_: Exception) {}
   }
 
   fun onScreenTouched(normX: Float, normY: Float) {
@@ -348,6 +355,11 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     } else {
       addLog("Gesture Action", "Triggered $gesture [Target offline]")
     }
+    val friendly = gesture.replace('_', ' ')
+    _lastActionFeedback.value = "Dispatched: $friendly"
+    try {
+      android.widget.Toast.makeText(context, "Gesture: $friendly", android.widget.Toast.LENGTH_SHORT).show()
+    } catch (_: Exception) {}
   }
 
   fun onScreenSwiped(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long = 300L) {
@@ -366,6 +378,10 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     } else {
       addLog("Navigation", "Dispatched ${commandType.name} [Target offline]")
     }
+    _lastActionFeedback.value = "Nav: ${commandType.name}"
+    try {
+      android.widget.Toast.makeText(context, "Nav: ${commandType.name}", android.widget.Toast.LENGTH_SHORT).show()
+    } catch (_: Exception) {}
   }
 
   fun sendTextInput(text: String) {
@@ -376,6 +392,10 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
       } else {
         addLog("Text Input", "Injected text: \"$text\" [Target offline]")
       }
+      _lastActionFeedback.value = "Typed: \"$text\""
+      try {
+        android.widget.Toast.makeText(context, "Injected text to target", android.widget.Toast.LENGTH_SHORT).show()
+      } catch (_: Exception) {}
     }
   }
 
@@ -386,15 +406,48 @@ class ControllerViewModel(application: Application) : AndroidViewModel(applicati
     } else {
       addLog("System Action", "Dispatched $action [Target offline]")
     }
+    val desc = when (action) {
+      "NOTIFICATIONS" -> "Notification Shade"
+      "QUICK_SETTINGS" -> "Quick Settings"
+      "LOCK" -> "Lock Screen"
+      "POWER" -> "Power Menu"
+      "RECENTS" -> "Overview / Recents"
+      else -> action
+    }
+    _lastActionFeedback.value = "Action: $desc"
+    try {
+      android.widget.Toast.makeText(context, "Action: $desc", android.widget.Toast.LENGTH_SHORT).show()
+    } catch (_: Exception) {}
   }
 
   fun sendVolume(direction: String) {
+    try {
+      val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
+      if (audioManager != null) {
+        val adjust = when (direction) {
+          "UP" -> android.media.AudioManager.ADJUST_RAISE
+          "DOWN" -> android.media.AudioManager.ADJUST_LOWER
+          else -> android.media.AudioManager.ADJUST_TOGGLE_MUTE
+        }
+        audioManager.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, adjust, android.media.AudioManager.FLAG_SHOW_UI)
+      }
+    } catch (_: Exception) {}
+
     if (controllerClient.isConnected) {
       controllerClient.sendVolume(direction)
       addLog("Volume Action", "Volume $direction dispatched")
     } else {
       addLog("Volume Action", "Volume $direction [Target offline]")
     }
+    val label = when (direction) {
+      "UP" -> "Volume Raised (+)"
+      "DOWN" -> "Volume Lowered (-)"
+      else -> "Volume Muted"
+    }
+    _lastActionFeedback.value = label
+    try {
+      android.widget.Toast.makeText(context, label, android.widget.Toast.LENGTH_SHORT).show()
+    } catch (_: Exception) {}
   }
 
   fun toggleConnection() {
