@@ -1,6 +1,0 @@
-{
-  "name": "TwinControl",
-  "description": "Cross-device screen monitoring and remote gesture controller",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

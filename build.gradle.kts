@@ -1,4 +1,3 @@
-// Root
-tasks.register("assembleDebug") {
-    dependsOn(":app:assembleDebug")
+// Top-level build file
+plugins {
 }
